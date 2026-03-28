@@ -1,0 +1,24 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "pkpy"
+version = "0.1.0"
+description = "Python bindings for pkcore, a high-performance poker analysis library"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Games/Entertainment",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "pkpy._pkpy"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
