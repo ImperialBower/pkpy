@@ -30,11 +30,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Create virtualenv
+        run: python -m venv .venv
+
       - name: Install maturin and pytest
-        run: pip install maturin pytest
+        run: .venv/bin/pip install maturin pytest
 
       - name: Build and install wheel
-        run: maturin develop
+        run: .venv/bin/maturin develop
 
       - name: Run tests
-        run: pytest
+        run: .venv/bin/pytest
