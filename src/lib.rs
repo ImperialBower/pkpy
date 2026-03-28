@@ -796,7 +796,7 @@ fn distinct_2_card_hands() -> usize {
 // ============================================================
 
 #[pymodule]
-fn _pkcore(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Rank>()?;
     m.add_class::<Suit>()?;
     m.add_class::<Card>()?;
