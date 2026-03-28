@@ -1,4 +1,4 @@
-.PHONY: setup build test demo fmt clippy clean ayce default help
+.PHONY: setup build test demo the-hand fmt clippy clean ayce default help
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -17,6 +17,7 @@ help:
 	@echo "  make build      - Compile the Rust extension into the venv"
 	@echo "  make test       - Run pytest"
 	@echo "  make demo       - Run demo.py"
+	@echo "  make the-hand   - Run examples/the_hand.py"
 	@echo "  make fmt        - Format Rust code"
 	@echo "  make clippy     - Run clippy linter"
 	@echo "  make clean      - Remove build artifacts and venv"
@@ -44,6 +45,10 @@ test: build
 # Run the demo
 demo: build
 	$(PYTHON) demo.py
+
+# Run the The Hand example
+the-hand: build
+	$(PYTHON) examples/the_hand.py
 
 # Format Rust code
 fmt:
