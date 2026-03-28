@@ -1,7 +1,7 @@
-# pkpy
-
-[![CI](https://github.com/folkengine/pkpy/actions/workflows/ci.yml/badge.svg)](https://github.com/folkengine/pkpy/actions/workflows/ci.yml)
+[![CI](https://github.com/ImperialBower/pkpy/actions/workflows/ci.yml/badge.svg)](https://github.com/ImperialBower/pkpy/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+# pkpy
 
 Python bindings for [pkcore](https://github.com/folkengine/pkcore), a high-performance poker analysis library written in Rust.
 
