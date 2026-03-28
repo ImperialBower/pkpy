@@ -1,4 +1,5 @@
 use pkcore::analysis::case_evals::CaseEvals as PkCaseEvals;
+use pkcore::analysis::class::HandRankClass as PkHandRankClass;
 use pkcore::analysis::eval::Eval as PkEval;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
 use pkcore::analysis::outs::Outs as PkOuts;
@@ -9,7 +10,6 @@ use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
 use pkcore::rank::Rank as PkRank;
 use pkcore::suit::Suit as PkSuit;
-use pkcore::analysis::class::HandRankClass as PkHandRankClass;
 use pkcore::Pile;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -38,46 +38,74 @@ pub struct Rank(PkRank);
 impl Rank {
     #[classattr]
     #[allow(non_snake_case)]
-    fn ACE() -> Self { Rank(PkRank::ACE) }
+    fn ACE() -> Self {
+        Rank(PkRank::ACE)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn KING() -> Self { Rank(PkRank::KING) }
+    fn KING() -> Self {
+        Rank(PkRank::KING)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn QUEEN() -> Self { Rank(PkRank::QUEEN) }
+    fn QUEEN() -> Self {
+        Rank(PkRank::QUEEN)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn JACK() -> Self { Rank(PkRank::JACK) }
+    fn JACK() -> Self {
+        Rank(PkRank::JACK)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn TEN() -> Self { Rank(PkRank::TEN) }
+    fn TEN() -> Self {
+        Rank(PkRank::TEN)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn NINE() -> Self { Rank(PkRank::NINE) }
+    fn NINE() -> Self {
+        Rank(PkRank::NINE)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn EIGHT() -> Self { Rank(PkRank::EIGHT) }
+    fn EIGHT() -> Self {
+        Rank(PkRank::EIGHT)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn SEVEN() -> Self { Rank(PkRank::SEVEN) }
+    fn SEVEN() -> Self {
+        Rank(PkRank::SEVEN)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn SIX() -> Self { Rank(PkRank::SIX) }
+    fn SIX() -> Self {
+        Rank(PkRank::SIX)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn FIVE() -> Self { Rank(PkRank::FIVE) }
+    fn FIVE() -> Self {
+        Rank(PkRank::FIVE)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn FOUR() -> Self { Rank(PkRank::FOUR) }
+    fn FOUR() -> Self {
+        Rank(PkRank::FOUR)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn TREY() -> Self { Rank(PkRank::TREY) }
+    fn TREY() -> Self {
+        Rank(PkRank::TREY)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn DEUCE() -> Self { Rank(PkRank::DEUCE) }
+    fn DEUCE() -> Self {
+        Rank(PkRank::DEUCE)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn BLANK() -> Self { Rank(PkRank::BLANK) }
+    fn BLANK() -> Self {
+        Rank(PkRank::BLANK)
+    }
 
     /// The integer value of this rank (Ace=14, King=13, ..., Deuce=2, Blank=0).
     fn value(&self) -> u8 {
@@ -136,19 +164,29 @@ pub struct Suit(PkSuit);
 impl Suit {
     #[classattr]
     #[allow(non_snake_case)]
-    fn SPADES() -> Self { Suit(PkSuit::SPADES) }
+    fn SPADES() -> Self {
+        Suit(PkSuit::SPADES)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn HEARTS() -> Self { Suit(PkSuit::HEARTS) }
+    fn HEARTS() -> Self {
+        Suit(PkSuit::HEARTS)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn DIAMONDS() -> Self { Suit(PkSuit::DIAMONDS) }
+    fn DIAMONDS() -> Self {
+        Suit(PkSuit::DIAMONDS)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn CLUBS() -> Self { Suit(PkSuit::CLUBS) }
+    fn CLUBS() -> Self {
+        Suit(PkSuit::CLUBS)
+    }
     #[classattr]
     #[allow(non_snake_case)]
-    fn BLANK() -> Self { Suit(PkSuit::BLANK) }
+    fn BLANK() -> Self {
+        Suit(PkSuit::BLANK)
+    }
 
     /// The integer value of this suit (Spades=4, Hearts=3, Diamonds=2, Clubs=1, Blank=0).
     fn value(&self) -> u8 {
@@ -206,9 +244,7 @@ impl Card {
     /// Parse a card from a string such as "As", "Kh", "Q♦", "2c", "A♠".
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        PkCard::from_str(s)
-            .map(Card)
-            .map_err(to_py_err)
+        PkCard::from_str(s).map(Card).map_err(to_py_err)
     }
 
     /// Create a card from a Rank and Suit.
@@ -295,9 +331,7 @@ impl Cards {
     /// Parse a Cards collection from a space-separated string of card abbreviations.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        PkCards::from_str(s)
-            .map(Cards)
-            .map_err(to_py_err)
+        PkCards::from_str(s).map(Cards).map_err(to_py_err)
     }
 
     /// Returns a full 52-card deck.
@@ -343,7 +377,9 @@ impl Cards {
 
     fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<CardsIterator>> {
         let cards: Vec<Card> = slf.0.to_vec().into_iter().map(Card).collect();
-        let iter = CardsIterator { inner: cards.into_iter() };
+        let iter = CardsIterator {
+            inner: cards.into_iter(),
+        };
         Py::new(slf.py(), iter)
     }
 
@@ -400,9 +436,7 @@ impl HoleCards {
     /// Cards are grouped in pairs: first two cards are player 1, next two are player 2, etc.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        PkHoleCards::from_str(s)
-            .map(HoleCards)
-            .map_err(to_py_err)
+        PkHoleCards::from_str(s).map(HoleCards).map_err(to_py_err)
     }
 
     /// Returns the number of players (two-card hands) in this collection.
@@ -441,9 +475,7 @@ impl Board {
     /// Parse a board from a space-separated string of card abbreviations (3-5 cards).
     #[staticmethod]
     fn parse(s: &str) -> PyResult<Self> {
-        PkBoard::from_str(s)
-            .map(Board)
-            .map_err(to_py_err)
+        PkBoard::from_str(s).map(Board).map_err(to_py_err)
     }
 
     /// Returns the cards visible at and before the turn (flop + turn).
@@ -478,7 +510,9 @@ pub struct HandRankClass(PkHandRankClass);
 impl HandRankClass {
     #[classattr]
     #[allow(non_snake_case)]
-    fn ROYAL_FLUSH() -> Self { HandRankClass(PkHandRankClass::RoyalFlush) }
+    fn ROYAL_FLUSH() -> Self {
+        HandRankClass(PkHandRankClass::RoyalFlush)
+    }
 
     /// Returns True if this hand is any kind of straight flush (including royal flush).
     fn is_straight_flush(&self) -> bool {
@@ -630,7 +664,10 @@ impl Eval {
     }
 
     fn __repr__(&self) -> String {
-        format!("Eval(rank_value={}, class={:?})", self.0.hand_rank.value, self.0.hand_rank.class)
+        format!(
+            "Eval(rank_value={}, class={:?})",
+            self.0.hand_rank.value, self.0.hand_rank.class
+        )
     }
 }
 
@@ -720,7 +757,11 @@ impl Outs {
     }
 
     fn __repr__(&self) -> String {
-        format!("Outs(longest_player={}, len_longest={})", self.0.longest_player(), self.0.len_longest())
+        format!(
+            "Outs(longest_player={}, len_longest={})",
+            self.0.longest_player(),
+            self.0.len_longest()
+        )
     }
 }
 

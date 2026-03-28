@@ -11,33 +11,17 @@ pkpy lets Python developers use pkcore's poker engine — card parsing, hand eva
 
 ---
 
-## Technology Background
+## Dependencies
 
-### PyO3
+- [pkcore](https://crates.io/crates/pkcore) — the underlying Rust poker analysis library
+- [PyO3](https://pyo3.rs) — Rust/Python bindings framework
+- [Maturin](https://maturin.rs) — build tool for PyO3 extension modules
 
-[PyO3](https://pyo3.rs) is the standard Rust library for writing Python extension modules. It provides:
+See [docs/STACK.md](docs/STACK.md) for more details on the technology stack.
 
-- Rust macros (`#[pyclass]`, `#[pymethods]`, `#[pymodule]`) that generate the C-level Python type structures CPython expects
-- Automatic memory management bridging Rust's ownership model with Python's garbage collector
-- Type conversion between Rust primitives and Python objects (`&str` ↔ `str`, `Vec<T>` ↔ `list`, `Option<T>` ↔ `None | T`, etc.)
-- Safe error propagation — Rust `Result::Err` values become Python exceptions
+---
 
-When you call `Card.parse("As")` in Python, PyO3 converts the Python string to a `&str`, passes it into the Rust `FromStr` implementation, and wraps the returned `Card` in a Python object. All of this happens in-process with no serialization.
-
-The extension module is compiled to a `.so` / `.dylib` / `.pyd` shared library (platform-dependent) that CPython imports like any other C extension.
-
-### Maturin
-
-[Maturin](https://maturin.rs) is the build tool for PyO3 projects. It handles:
-
-- Detecting the active Python interpreter and its include paths
-- Invoking `cargo build` with the correct flags to link against CPython's shared library
-- Packaging the compiled `.so` into a standard Python wheel (`.whl`)
-- `maturin develop` for editable installs during development (equivalent to `pip install -e .`)
-
-Maturin replaces the older `setuptools-rust` approach and is the recommended tool for new PyO3 projects.
-
-### Cactus Kev Binary Card Representation
+## Cactus Kev Binary Card Representation
 
 pkcore represents each card as a single `u32` using a variation of [Cactus Kev's binary encoding](https://suffe.cool/poker/evaluator.html), designed for O(1) hand evaluation via lookup tables.
 
@@ -57,7 +41,7 @@ pkcore represents each card as a single `u32` using a variation of [Cactus Kev's
 
 This encoding makes many operations branch-free bit manipulations. For example, detecting a flush is a single bitwise AND across five cards' suit bits.
 
-### Hand Evaluation
+## Hand Evaluation
 
 pkcore uses a two-level lookup table strategy (the same approach as the original Cactus Kev evaluator):
 
