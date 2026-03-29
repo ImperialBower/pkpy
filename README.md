@@ -319,18 +319,6 @@ python3 -m maturin publish
 
 ---
 
-## Design Notes
-
-**Why not ctypes or cffi?** Those require a C-compatible ABI layer and manual memory management. PyO3 operates at the Python C API level and handles memory safety through Rust's ownership model. It also provides much richer type integration (Python exceptions, iterators, `__str__`, `__eq__`, etc.) with very little boilerplate.
-
-**Why not pydantic-style dataclasses?** pkcore types carry invariants that are enforced by Rust's type system at construction time (e.g., a `Card` is always a valid CKC `u32`). Reimplementing those in Python would either duplicate the logic or lose the guarantees. Wrapping the Rust types directly means the invariants are never violated.
-
-**String parsing as the primary constructor:** pkcore's Rust API uses `FromStr` extensively, and that maps naturally to static `parse()` class methods in Python. This keeps the Python API idiomatic while reusing the battle-tested Rust parsing logic.
-
-**Player indices are 1-based:** This matches pkcore's convention in `Outs` and `CaseEvals`, where player 1 is the first hand passed to `HoleCards`.
-
----
-
 ## Relationship to pkcore
 
 This project wraps pkcore as a versioned crates.io dependency. The wrapper intentionally exposes a subset of pkcore's API — the analysis-focused surface that's most useful from Python. Lower-level types (binary card maps, SQLite storage, GTO combo explosion, Pluribus log parsing) are not yet exposed.
