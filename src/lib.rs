@@ -1,8 +1,12 @@
 use pkcore::analysis::case_evals::CaseEvals as PkCaseEvals;
 use pkcore::analysis::class::HandRankClass as PkHandRankClass;
 use pkcore::analysis::eval::Eval as PkEval;
+use pkcore::analysis::gto::combo::{Combo as PkCombo, Qualifier as PkQualifier};
+use pkcore::analysis::gto::combos::Combos as PkCombos;
+use pkcore::analysis::gto::twos::Twos as PkTwos;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
 use pkcore::analysis::outs::Outs as PkOuts;
+use pkcore::arrays::two::Two as PkTwo;
 use pkcore::card::Card as PkCard;
 use pkcore::cards::Cards as PkCards;
 use pkcore::play::board::Board as PkBoard;
@@ -10,9 +14,11 @@ use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
 use pkcore::rank::Rank as PkRank;
 use pkcore::suit::Suit as PkSuit;
-use pkcore::Pile;
+use pkcore::{Pile, GTO};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 fn to_py_err(e: impl std::fmt::Display) -> PyErr {
@@ -805,6 +811,433 @@ impl Game {
 }
 
 // ============================================================
+// Qualifier
+// ============================================================
+
+/// The suit qualifier for a hand combo: suited, offsuit, or both.
+#[pyclass(name = "Qualifier")]
+#[derive(Clone)]
+pub struct Qualifier(PkQualifier);
+
+#[pymethods]
+impl Qualifier {
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn SUITED() -> Self {
+        Qualifier(PkQualifier::SUITED)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn OFFSUIT() -> Self {
+        Qualifier(PkQualifier::OFFSUIT)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn ALL() -> Self {
+        Qualifier(PkQualifier::ALL)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{:?}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Qualifier.{:?}", self.0)
+    }
+
+    fn __eq__(&self, other: &Qualifier) -> bool {
+        self.0 == other.0
+    }
+
+    fn __hash__(&self) -> usize {
+        match self.0 {
+            PkQualifier::OFFSUIT => 0,
+            PkQualifier::SUITED => 1,
+            PkQualifier::ALL => 2,
+        }
+    }
+}
+
+// ============================================================
+// Combo
+// ============================================================
+
+/// An abstract poker hand combination such as "AKs", "JJ+", or "QQ".
+///
+/// A Combo represents a category of two-card hands defined by rank(s) and a suit
+/// qualifier. Use `Combos.explode()` to expand a range into all concrete `Two` hands.
+///
+/// Examples:
+///     >>> from pkpy import Combo
+///     >>> c = Combo.parse("AKs")
+///     >>> c.is_suited()
+///     True
+///     >>> c.total_pairs()
+///     4
+#[pyclass(name = "Combo")]
+#[derive(Clone)]
+pub struct Combo(PkCombo);
+
+#[pymethods]
+impl Combo {
+    /// Parse a combo from a string such as "AKs", "JJ+", "QQ", "AJo".
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<Self> {
+        PkCombo::from_str(s).map(Combo).map_err(to_py_err)
+    }
+
+    /// The higher rank of this combo.
+    #[getter]
+    fn first(&self) -> Rank {
+        Rank(self.0.first)
+    }
+
+    /// The lower rank of this combo.
+    #[getter]
+    fn second(&self) -> Rank {
+        Rank(self.0.second)
+    }
+
+    /// True if this combo has a "+" suffix (e.g., "JJ+").
+    #[getter]
+    fn plus(&self) -> bool {
+        self.0.plus
+    }
+
+    /// The suit qualifier: SUITED, OFFSUIT, or ALL.
+    #[getter]
+    fn qualifier(&self) -> Qualifier {
+        Qualifier(self.0.qualifier)
+    }
+
+    /// True if this combo is a pocket pair (both ranks equal).
+    fn is_pair(&self) -> bool {
+        self.0.is_pair()
+    }
+
+    /// True if this combo requires both cards to be suited.
+    fn is_suited(&self) -> bool {
+        self.0.is_suited()
+    }
+
+    /// True if this combo requires both cards to be offsuit.
+    fn is_offsuit(&self) -> bool {
+        self.0.is_offsuit()
+    }
+
+    /// True if the higher rank is an Ace (e.g., AK, AQ, A2).
+    fn is_ace_x(&self) -> bool {
+        self.0.is_ace_x()
+    }
+
+    /// True if this is a suited Ace-X combo.
+    fn is_ace_x_suited(&self) -> bool {
+        self.0.is_ace_x_suited()
+    }
+
+    /// True if this is an offsuit Ace-X combo.
+    fn is_ace_x_offsuit(&self) -> bool {
+        self.0.is_ace_x_offsuit()
+    }
+
+    /// True if the two ranks are consecutive (e.g., KQ, JT, 54).
+    fn is_connector(&self) -> bool {
+        self.0.is_connector()
+    }
+
+    /// True if this is a suited connector.
+    fn is_suited_connector(&self) -> bool {
+        self.0.is_suited_connector()
+    }
+
+    /// True if this is an offsuit connector.
+    fn is_offsuit_connector(&self) -> bool {
+        self.0.is_offsuit_connector()
+    }
+
+    /// Number of concrete two-card hands this combo represents.
+    /// Pairs → 6, suited → 4, offsuit → 12, all → 16.
+    fn total_pairs(&self) -> usize {
+        self.0.total_pairs()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Combo.parse('{}')", self.0)
+    }
+
+    fn __eq__(&self, other: &Combo) -> bool {
+        self.0 == other.0
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.hash(&mut h);
+        h.finish()
+    }
+}
+
+// ============================================================
+// Two
+// ============================================================
+
+/// A specific two-card poker hand (e.g., "As Kh").
+///
+/// `Two` is the concrete unit produced by combo explosion. Each `Two` holds
+/// exactly two distinct cards and can be inspected for pairing, suitedness, and
+/// card membership.
+///
+/// Examples:
+///     >>> from pkpy import Two
+///     >>> t = Two.parse("As Kh")
+///     >>> t.is_suited()
+///     False
+///     >>> str(t.first())
+///     'A♠'
+#[pyclass(name = "Two")]
+#[derive(Clone)]
+pub struct Two(PkTwo);
+
+#[pymethods]
+impl Two {
+    /// Parse a two-card hand from a space-separated string such as "As Kh".
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<Self> {
+        PkTwo::from_str(s).map(Two).map_err(to_py_err)
+    }
+
+    /// The first (higher) card.
+    fn first(&self) -> Card {
+        Card(self.0.first())
+    }
+
+    /// The second (lower) card.
+    fn second(&self) -> Card {
+        Card(self.0.second())
+    }
+
+    /// True if both cards share the same rank (pocket pair).
+    fn is_pair(&self) -> bool {
+        self.0.is_pair()
+    }
+
+    /// True if both cards share the same suit.
+    fn is_suited(&self) -> bool {
+        self.0.is_suited()
+    }
+
+    /// True if either card has the given rank.
+    fn contains_rank(&self, rank: &Rank) -> bool {
+        self.0.contains_rank(rank.0)
+    }
+
+    /// True if either card has the given suit.
+    fn contains_suit(&self, suit: &Suit) -> bool {
+        self.0.contains_suit(suit.0)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Two.parse('{}')", self.0)
+    }
+
+    fn __eq__(&self, other: &Two) -> bool {
+        self.0 == other.0
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.hash(&mut h);
+        h.finish()
+    }
+}
+
+// ============================================================
+// Twos
+// ============================================================
+
+/// A collection of concrete two-card hands produced by combo explosion.
+///
+/// Obtained by calling `Combos.explode()`. Can be filtered by card, rank,
+/// suit, pairing, or suitedness.
+///
+/// Examples:
+///     >>> from pkpy import Combos
+///     >>> twos = Combos.parse("QQ+, AK").explode()
+///     >>> len(twos)
+///     30
+#[pyclass(name = "Twos")]
+#[derive(Clone)]
+pub struct Twos(PkTwos);
+
+#[pymethods]
+impl Twos {
+    /// Number of hands in this collection.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    /// True if this collection contains no hands.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// All hands as a Python list, sorted high to low.
+    fn to_list(&self) -> Vec<Two> {
+        self.0.to_vec().into_iter().map(Two).collect()
+    }
+
+    /// True if the given Two is in this collection.
+    fn contains(&self, two: &Two) -> bool {
+        self.0.contains(&two.0)
+    }
+
+    /// Return only hands that contain the given card.
+    fn filter_on_card(&self, card: &Card) -> Self {
+        Twos(self.0.filter_on_card(card.0))
+    }
+
+    /// Return only pocket pairs.
+    fn filter_is_paired(&self) -> Self {
+        Twos(self.0.filter_is_paired())
+    }
+
+    /// Return only non-paired hands.
+    fn filter_is_not_paired(&self) -> Self {
+        Twos(self.0.filter_is_not_paired())
+    }
+
+    /// Return only suited hands.
+    fn filter_is_suited(&self) -> Self {
+        Twos(self.0.filter_is_suited())
+    }
+
+    /// Return only offsuit hands.
+    fn filter_is_not_suited(&self) -> Self {
+        Twos(self.0.filter_is_not_suited())
+    }
+
+    /// Return only hands that contain the given rank.
+    fn filter_on_rank(&self, rank: &Rank) -> Self {
+        Twos(self.0.filter_on_rank(rank.0))
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Twos(len={})", self.0.len())
+    }
+}
+
+// ============================================================
+// Combos
+// ============================================================
+
+/// A range of abstract hand combinations (e.g., "QQ+, AK", "66+,AJs+,KQs").
+///
+/// Parse a range from a standard poker range string, then call `explode()` to
+/// get all concrete two-card hands the range represents.
+///
+/// Predefined range strings are available as class attributes:
+///     - `Combos.PERCENT_2_5`  — top ~2.5% of hands ("QQ+, AK")
+///     - `Combos.PERCENT_5`    — top ~5%
+///     - `Combos.PERCENT_10`   — top ~10%
+///     - `Combos.PERCENT_20`   — top ~20%
+///     - `Combos.PERCENT_33`   — top ~33%
+///
+/// Examples:
+///     >>> from pkpy import Combos
+///     >>> r = Combos.parse("QQ+, AK")
+///     >>> len(r)
+///     5
+///     >>> twos = r.explode()
+///     >>> len(twos)
+///     30
+#[pyclass(name = "Combos")]
+#[derive(Clone)]
+pub struct Combos(PkCombos);
+
+#[pymethods]
+impl Combos {
+    /// Parse a range from a standard poker range string.
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<Self> {
+        PkCombos::from_str(s).map(Combos).map_err(to_py_err)
+    }
+
+    /// Predefined range string for the top ~2.5% of hands.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PERCENT_2_5() -> &'static str {
+        PkCombos::PERCENT_2_5
+    }
+
+    /// Predefined range string for the top ~5% of hands.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PERCENT_5() -> &'static str {
+        PkCombos::PERCENT_5
+    }
+
+    /// Predefined range string for the top ~10% of hands.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PERCENT_10() -> &'static str {
+        PkCombos::PERCENT_10
+    }
+
+    /// Predefined range string for the top ~20% of hands.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PERCENT_20() -> &'static str {
+        PkCombos::PERCENT_20
+    }
+
+    /// Predefined range string for the top ~33% of hands.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn PERCENT_33() -> &'static str {
+        PkCombos::PERCENT_33
+    }
+
+    /// Expand this range into all concrete two-card hands it represents.
+    fn explode(&self) -> Twos {
+        Twos(self.0.explode())
+    }
+
+    /// All abstract combos in this range as a Python list, sorted high to low.
+    fn to_list(&self) -> Vec<Combo> {
+        self.0.to_vec().into_iter().map(Combo).collect()
+    }
+
+    /// Number of abstract combos in this range.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    /// True if this range contains no combos.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Combos.parse('{}')", self.0)
+    }
+}
+
+// ============================================================
 // Constants
 // ============================================================
 
@@ -850,6 +1283,11 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CaseEvals>()?;
     m.add_class::<Outs>()?;
     m.add_class::<Game>()?;
+    m.add_class::<Qualifier>()?;
+    m.add_class::<Combo>()?;
+    m.add_class::<Two>()?;
+    m.add_class::<Twos>()?;
+    m.add_class::<Combos>()?;
     m.add_function(wrap_pyfunction!(unique_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(distinct_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(unique_2_card_hands, m)?)?;

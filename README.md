@@ -97,42 +97,6 @@ str(card)         # -> "Q♦"
 card == Card.parse("Qd")  # -> True
 ```
 
-### `Rank`
-
-Card rank enum. Values range from `BLANK` (0) through `DEUCE` (2) up to `ACE` (14).
-
-```python
-from pkpy import Rank
-
-Rank.ACE.value()   # -> 14
-Rank.KING.value()  # -> 13
-Rank.DEUCE.value() # -> 2
-
-str(Rank.ACE)  # -> "A"
-Rank.ACE > Rank.KING  # -> True
-
-# All variants:
-# ACE, KING, QUEEN, JACK, TEN, NINE, EIGHT, SEVEN,
-# SIX, FIVE, FOUR, TREY, DEUCE, BLANK
-```
-
-### `Suit`
-
-Card suit enum.
-
-```python
-from pkpy import Suit
-
-Suit.SPADES.value()   # -> 4
-Suit.CLUBS.value()    # -> 1
-Suit.HEARTS.symbol()  # -> "♥"
-Suit.DIAMONDS.letter() # -> "D"
-
-str(Suit.SPADES)  # -> "♠"
-
-# All variants: SPADES, HEARTS, DIAMONDS, CLUBS, BLANK
-```
-
 ### `Cards`
 
 An ordered, unique collection of cards backed by an `IndexSet` (ordered hash set). Duplicate inserts are silently ignored.
@@ -255,6 +219,129 @@ from pkpy import (
 
 ---
 
+## GTO Range Analysis
+
+### `Combo`
+
+An abstract hand combination defined by rank(s) and a suit qualifier.
+
+```python
+from pkpy import Combo
+
+c = Combo.parse("AKs")
+c.is_suited()           # -> True
+c.is_pair()             # -> False
+c.is_ace_x()            # -> True
+c.total_pairs()         # -> 4  (four suited AK combos)
+c.first                 # -> Rank.ACE
+c.second                # -> Rank.KING
+c.plus                  # -> False
+
+Combo.parse("JJ+").plus         # -> True
+Combo.parse("QQ").total_pairs() # -> 6  (six ways to make QQ)
+Combo.parse("AKo").total_pairs()# -> 12 (twelve offsuit AK combos)
+```
+
+### `Combos`
+
+A range of abstract hand combinations, parsed from standard poker range notation.
+
+```python
+from pkpy import Combos
+
+r = Combos.parse("QQ+, AK")
+len(r)          # -> 5  (QQ, KK, AA, AKs, AKo as abstract combos)
+
+twos = r.explode()
+len(twos)       # -> 34 (all concrete two-card hands)
+
+# Predefined ranges (returned as strings, pass to Combos.parse)
+Combos.PERCENT_2_5   # "QQ+, AK"       — top ~2.5% of hands
+Combos.PERCENT_5     # "TT+, AQ+"      — top ~5%
+Combos.PERCENT_10    # "44+, AJ+, ..."  — top ~10%
+Combos.PERCENT_20    # top ~20%
+Combos.PERCENT_33    # top ~33%
+
+# Parse a predefined range
+tight = Combos.parse(Combos.PERCENT_2_5)
+```
+
+### `Two`
+
+A concrete two-card hand — the unit produced by combo explosion.
+
+```python
+from pkpy import Two
+
+t = Two.parse("As Kh")
+t.first()               # -> Card (A♠)
+t.second()              # -> Card (K♥)
+t.is_suited()           # -> False
+t.is_pair()             # -> False
+t.contains_rank(Rank.ACE)   # -> True
+t.contains_suit(Suit.SPADES) # -> True
+```
+
+### `Twos`
+
+The collection returned by `Combos.explode()`. Supports filtering.
+
+```python
+from pkpy import Combos
+
+twos = Combos.parse("QQ+, AK").explode()
+
+twos.filter_is_paired()       # -> Twos  (only pocket pairs)
+twos.filter_is_not_paired()   # -> Twos  (only non-paired hands)
+twos.filter_is_suited()       # -> Twos  (only suited hands)
+twos.filter_is_not_suited()   # -> Twos  (only offsuit hands)
+twos.filter_on_rank(Rank.ACE) # -> Twos  (hands containing an Ace)
+twos.filter_on_card(Card.parse("As"))  # -> Twos (hands containing A♠)
+
+twos.to_list()    # -> list[Two]
+twos.contains(Two.parse("As Kh"))  # -> bool
+```
+
+### `Qualifier`
+
+The suit qualifier for a combo: `SUITED`, `OFFSUIT`, or `ALL`.
+
+```python
+from pkpy import Combo, Qualifier
+
+Combo.parse("AKs").qualifier == Qualifier.SUITED   # -> True
+Combo.parse("AKo").qualifier == Qualifier.OFFSUIT  # -> True
+Combo.parse("AK").qualifier  == Qualifier.ALL      # -> True
+```
+
+### GTO Example
+
+```python
+from pkpy import Combos, Rank
+
+# Villain's opening range
+villain_range = Combos.parse("66+,AJs+,KQs,AJo+,KQo")
+
+# Expand to all concrete two-card hands
+twos = villain_range.explode()
+print(f"Total hands in range: {len(twos)}")
+
+# How many are pocket pairs vs. unpaired?
+pairs  = twos.filter_is_paired()
+unpaired = twos.filter_is_not_paired()
+print(f"Pairs: {len(pairs)}, Unpaired: {len(unpaired)}")
+
+# Hands containing an Ace
+ace_hands = twos.filter_on_rank(Rank.ACE)
+print(f"Ace-x hands: {len(ace_hands)}")
+
+# Suited vs. offsuit breakdowns
+print(f"Suited: {len(twos.filter_is_suited())}")
+print(f"Offsuit: {len(twos.filter_is_not_suited())}")
+```
+
+---
+
 ## Complete Example
 
 ```python
@@ -321,7 +408,9 @@ python3 -m maturin publish
 
 ## Relationship to pkcore
 
-This project wraps pkcore as a versioned crates.io dependency. The wrapper intentionally exposes a subset of pkcore's API — the analysis-focused surface that's most useful from Python. Lower-level types (binary card maps, SQLite storage, GTO combo explosion, Pluribus log parsing) are not yet exposed.
+This project wraps pkcore as a versioned crates.io dependency. The wrapper intentionally exposes a
+subset of pkcore's API — the analysis-focused surface that's most useful from Python. Lower-level
+types (binary card maps, SQLite storage, Pluribus log parsing) are not yet exposed.
 
 ---
 
