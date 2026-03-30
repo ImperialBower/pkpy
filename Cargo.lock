@@ -849,9 +849,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pkcore"
-version = "0.0.29"
+version = "0.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ddad347cad200e086f18720e11b833d3d4db5a4e2a051db54a77add08587861"
+checksum = "c2f7e478eed9974d5daf9d112a8983b9c717a5a1e93e36d474be2dfefa7426e6"
 dependencies = [
  "bint",
  "bitvec",
