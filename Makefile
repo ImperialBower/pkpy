@@ -1,4 +1,4 @@
-.PHONY: setup build test demo the-hand calc fmt clippy clean ayce default help
+.PHONY: setup build test demo the-hand calc gto fmt clippy clean ayce default help
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -19,6 +19,7 @@ help:
 	@echo "  make demo       - Run demo.py"
 	@echo "  make the-hand   - Run examples/the_hand.py"
 	@echo "  make calc       - Run examples/calc.py (THE HAND)"
+	@echo "  make gto        - Run examples/gto.py (KK vs range)"
 	@echo "  make fmt        - Format Rust code"
 	@echo "  make clippy     - Run clippy linter"
 	@echo "  make clean      - Remove build artifacts and venv"
@@ -54,6 +55,10 @@ the-hand: build
 # Run the calc example (THE HAND)
 calc: build
 	$(PYTHON) examples/calc.py -d "6♠ 6♥ 5♦ 5♣" -b "9♣ 6♦ 5♥ 5♠"
+
+# Run the gto example (KK vs range)
+gto: build
+	$(PYTHON) examples/gto.py -p "K♠ K♥" -v "66+,AJs+,KQs,AJo+,KQo"
 
 # Format Rust code
 fmt:

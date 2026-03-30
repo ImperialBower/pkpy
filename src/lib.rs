@@ -2,10 +2,14 @@ use pkcore::analysis::case_evals::CaseEvals as PkCaseEvals;
 use pkcore::analysis::class::HandRankClass as PkHandRankClass;
 use pkcore::analysis::eval::Eval as PkEval;
 use pkcore::analysis::gto::combo::{Combo as PkCombo, Qualifier as PkQualifier};
+use pkcore::analysis::gto::combo_pairs::ComboPairs as PkComboPairs;
 use pkcore::analysis::gto::combos::Combos as PkCombos;
+use pkcore::analysis::gto::odds::WinLoseDraw as PkWinLoseDraw;
 use pkcore::analysis::gto::twos::Twos as PkTwos;
+use pkcore::analysis::gto::vs::Versus as PkVersus;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
 use pkcore::analysis::outs::Outs as PkOuts;
+use pkcore::analysis::store::db::hup::HUPResult as PkHUPResult;
 use pkcore::arrays::two::Two as PkTwo;
 use pkcore::card::Card as PkCard;
 use pkcore::cards::Cards as PkCards;
@@ -886,6 +890,11 @@ pub struct FlopEval(PkFlopEval);
 
 #[pymethods]
 impl FlopEval {
+    /// Convert to a WinLoseDraw summary of wins, losses, and draws for player 0.
+    fn to_win_lose_draw(&self) -> WinLoseDraw {
+        WinLoseDraw(PkWinLoseDraw::from(self.0.clone()))
+    }
+
     fn __str__(&self) -> String {
         format!("{}", self.0)
     }
@@ -1344,12 +1353,247 @@ impl Combos {
         self.0.is_empty()
     }
 
+    /// Group the concrete hands in this range by their abstract combo pattern.
+    fn combo_pairs(&self) -> ComboPairs {
+        ComboPairs(self.0.combo_pairs())
+    }
+
     fn __str__(&self) -> String {
         format!("{}", self.0)
     }
 
     fn __repr__(&self) -> String {
         format!("Combos.parse('{}')", self.0)
+    }
+}
+
+// ============================================================
+// WinLoseDraw
+// ============================================================
+
+/// Aggregate win, loss, and draw counts for a heads-up matchup.
+///
+/// Examples:
+///     >>> from pkpy import Versus, Two, Combos
+///     >>> solver = Versus(Two.parse("K♠ K♥"), Combos.parse("66+,AJs+,KQs,AJo+,KQo"))
+///     >>> hups = solver.hups_at_deal()
+///     >>> results = Versus.combined_odds_at_deal(hups)
+///     >>> results.win_percentage()
+#[pyclass(from_py_object, name = "WinLoseDraw")]
+#[derive(Clone)]
+pub struct WinLoseDraw(PkWinLoseDraw);
+
+#[pymethods]
+impl WinLoseDraw {
+    /// Total number of outcomes (wins + losses + draws).
+    fn total(&self) -> u64 {
+        self.0.total()
+    }
+
+    /// Fraction of outcomes that are wins, as a percentage (0–100).
+    fn win_percentage(&self) -> f32 {
+        self.0.win_percentage()
+    }
+
+    /// Fraction of outcomes that are losses, as a percentage (0–100).
+    fn loss_percentage(&self) -> f32 {
+        self.0.loss_percentage()
+    }
+
+    /// Fraction of outcomes that are draws, as a percentage (0–100).
+    fn draw_percentage(&self) -> f32 {
+        self.0.draw_percentage()
+    }
+
+    #[getter]
+    fn wins(&self) -> u64 {
+        self.0.wins
+    }
+
+    #[getter]
+    fn losses(&self) -> u64 {
+        self.0.losses
+    }
+
+    #[getter]
+    fn draws(&self) -> u64 {
+        self.0.draws
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "WinLoseDraw(wins={}, losses={}, draws={})",
+            self.0.wins, self.0.losses, self.0.draws
+        )
+    }
+}
+
+// ============================================================
+// HUPResult
+// ============================================================
+
+/// Preflop heads-up odds for a specific hero vs. villain hand matchup.
+///
+/// Returned as elements of the list from `Versus.hups_at_deal()`. Each
+/// HUPResult shows both hands and their win/loss/draw percentages.
+#[pyclass(from_py_object, name = "HUPResult")]
+#[derive(Clone)]
+pub struct HUPResult(PkHUPResult);
+
+#[pymethods]
+impl HUPResult {
+    /// The win/loss/draw breakdown for this matchup.
+    #[getter]
+    fn odds(&self) -> WinLoseDraw {
+        WinLoseDraw(self.0.odds)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "HUPResult(...)".to_string()
+    }
+}
+
+// ============================================================
+// ComboPairs
+// ============================================================
+
+/// A range grouped by abstract combo pattern, showing how many of each
+/// combo remain after accounting for blockers.
+///
+/// Obtained from `Combos.combo_pairs()` or `Versus.combo_pairs()`.
+#[pyclass(from_py_object, name = "ComboPairs")]
+#[derive(Clone)]
+pub struct ComboPairs(PkComboPairs);
+
+#[pymethods]
+impl ComboPairs {
+    /// The combos in this collection, sorted high to low.
+    fn key_vec(&self) -> Vec<Combo> {
+        self.0.key_vec().into_iter().map(Combo).collect()
+    }
+
+    /// The concrete two-card hands for a specific combo, or None if absent.
+    fn twos_for_combo(&self, combo: &Combo) -> Option<Twos> {
+        self.0.twos_for_combo(&combo.0).map(|t| Twos(t.clone()))
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "ComboPairs(...)".to_string()
+    }
+}
+
+// ============================================================
+// Versus
+// ============================================================
+
+/// A heads-up matchup between a specific hero hand and a villain range.
+///
+/// Core type for GTO range analysis. Computes preflop equity, removes
+/// blockers from the villain range, and (if a board is provided) evaluates
+/// postflop equity across all possible villain hands.
+///
+/// Examples:
+///     >>> from pkpy import Versus, Two, Combos
+///     >>> hero = Two.parse("K♠ K♥")
+///     >>> villain = Combos.parse("66+,AJs+,KQs,AJo+,KQo")
+///     >>> solver = Versus(hero, villain)
+///     >>> hups = solver.hups_at_deal()
+///     >>> results = Versus.combined_odds_at_deal(hups)
+///     >>> print(results)
+#[pyclass(skip_from_py_object, name = "Versus")]
+pub struct Versus(PkVersus);
+
+#[pymethods]
+impl Versus {
+    /// Create a preflop matchup between a hero hand and a villain range.
+    #[new]
+    fn new(hero: &Two, villain: &Combos) -> Self {
+        Versus(PkVersus::new(hero.0, villain.0.clone()))
+    }
+
+    /// Create a postflop matchup with a board.
+    #[staticmethod]
+    fn with_board(hero: &Two, villain: &Combos, board: &Board) -> Self {
+        Versus(PkVersus::new_with_board(hero.0, villain.0.clone(), board.0))
+    }
+
+    /// The hero's specific two-card hand.
+    #[getter]
+    fn hero(&self) -> Two {
+        Two(self.0.hero)
+    }
+
+    /// The villain's full abstract range (before blockers).
+    #[getter]
+    fn villain(&self) -> Combos {
+        Combos(self.0.villain.clone())
+    }
+
+    /// True if this solver has a board (postflop scenario).
+    fn has_board(&self) -> bool {
+        self.0.has_board()
+    }
+
+    /// Villain's remaining concrete hands after removing hero's blockers.
+    fn remaining(&self) -> Twos {
+        Twos(self.0.remaining())
+    }
+
+    /// Villain's remaining hands grouped by abstract combo (after blockers).
+    fn combo_pairs(&self) -> ComboPairs {
+        ComboPairs(self.0.combo_pairs())
+    }
+
+    /// Preflop heads-up odds for every villain hand vs. the hero.
+    ///
+    /// Returns a list of HUPResult objects, one per villain hand.
+    fn hups_at_deal(&self) -> Vec<HUPResult> {
+        self.0.hups_at_deal().into_values().map(HUPResult).collect()
+    }
+
+    /// Aggregate preflop equity across all villain hands.
+    ///
+    /// Pass the list returned by `hups_at_deal()`.
+    #[staticmethod]
+    fn combined_odds_at_deal(hups: Vec<HUPResult>) -> WinLoseDraw {
+        let pk: Vec<PkHUPResult> = hups.iter().map(|h| h.0).collect();
+        let refs: Vec<&PkHUPResult> = pk.iter().collect();
+        WinLoseDraw(PkVersus::combined_odds_at_deal(&refs))
+    }
+
+    /// Aggregate equity at the flop across all villain hands (requires board).
+    fn combined_odds_at_flop(&self) -> WinLoseDraw {
+        WinLoseDraw(self.0.combined_odds_at_flop())
+    }
+
+    /// Aggregate equity at the turn across all villain hands (requires board).
+    fn combined_odds_at_turn(&self) -> WinLoseDraw {
+        WinLoseDraw(self.0.combined_odds_at_turn())
+    }
+
+    /// All Game objects for each villain hand at the flop (requires board).
+    fn games_at_flop(&self) -> Vec<Game> {
+        self.0.games_at_flop().into_iter().map(Game).collect()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "Versus(...)".to_string()
     }
 }
 
@@ -1401,6 +1645,10 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Game>()?;
     m.add_class::<FlopEval>()?;
     m.add_class::<TurnEval>()?;
+    m.add_class::<WinLoseDraw>()?;
+    m.add_class::<HUPResult>()?;
+    m.add_class::<ComboPairs>()?;
+    m.add_class::<Versus>()?;
     m.add_class::<Qualifier>()?;
     m.add_class::<Combo>()?;
     m.add_class::<Two>()?;
