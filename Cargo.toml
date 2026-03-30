@@ -10,8 +10,8 @@ name = "pkpy"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22", features = ["extension-module"] }
-pkcore = "0.0.30"
+pyo3 = { version = "0.28", features = ["extension-module"] }
+pkcore = "0.0.31"
 
 [profile.release]
 lto = true

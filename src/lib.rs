@@ -12,6 +12,8 @@ use pkcore::cards::Cards as PkCards;
 use pkcore::play::board::Board as PkBoard;
 use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
+use pkcore::play::stages::flop_eval::FlopEval as PkFlopEval;
+use pkcore::play::stages::turn_eval::TurnEval as PkTurnEval;
 use pkcore::rank::Rank as PkRank;
 use pkcore::suit::Suit as PkSuit;
 use pkcore::{Pile, GTO};
@@ -36,7 +38,7 @@ fn to_py_err(e: impl std::fmt::Display) -> PyErr {
 ///     >>> r = Rank.ACE
 ///     >>> str(r)
 ///     'A'
-#[pyclass(name = "Rank")]
+#[pyclass(from_py_object, name = "Rank")]
 #[derive(Clone)]
 pub struct Rank(PkRank);
 
@@ -162,7 +164,7 @@ impl Rank {
 ///     >>> s = Suit.SPADES
 ///     >>> str(s)
 ///     '♠'
-#[pyclass(name = "Suit")]
+#[pyclass(from_py_object, name = "Suit")]
 #[derive(Clone)]
 pub struct Suit(PkSuit);
 
@@ -241,7 +243,7 @@ impl Suit {
 ///     'A♠'
 ///     >>> c.rank().value()
 ///     14
-#[pyclass(name = "Card")]
+#[pyclass(from_py_object, name = "Card")]
 #[derive(Clone)]
 pub struct Card(PkCard);
 
@@ -328,7 +330,7 @@ impl Card {
 ///     >>> deck = Cards.deck()
 ///     >>> len(deck)
 ///     52
-#[pyclass(name = "Cards")]
+#[pyclass(from_py_object, name = "Cards")]
 #[derive(Clone)]
 pub struct Cards(PkCards);
 
@@ -432,7 +434,7 @@ impl CardsIterator {
 ///     >>> hc = HoleCards.parse("As Ks Ah Kh")
 ///     >>> len(hc)
 ///     2
-#[pyclass(name = "HoleCards")]
+#[pyclass(from_py_object, name = "HoleCards")]
 #[derive(Clone)]
 pub struct HoleCards(PkHoleCards);
 
@@ -472,7 +474,7 @@ impl HoleCards {
 ///     >>> board = Board.parse("As Ks Qh Jd Tc")
 ///     >>> str(board)
 ///     'FLOP: A♠ K♠ Q♥, TURN: J♦, RIVER: T♣'
-#[pyclass(name = "Board")]
+#[pyclass(from_py_object, name = "Board")]
 #[derive(Clone)]
 pub struct Board(PkBoard);
 
@@ -508,7 +510,7 @@ impl Board {
 ///     >>> from pkcore import HandRankClass
 ///     >>> str(HandRankClass.ROYAL_FLUSH)
 ///     'RoyalFlush'
-#[pyclass(name = "HandRankClass")]
+#[pyclass(from_py_object, name = "HandRankClass")]
 #[derive(Clone)]
 pub struct HandRankClass(PkHandRankClass);
 
@@ -601,7 +603,7 @@ impl HandRankClass {
 /// Examples:
 ///     >>> # HandRank is obtained from an Eval, not constructed directly.
 ///     >>> from pkcore import Eval
-#[pyclass(name = "HandRank")]
+#[pyclass(from_py_object, name = "HandRank")]
 #[derive(Clone)]
 pub struct HandRank(PkHandRank);
 
@@ -643,7 +645,7 @@ impl HandRank {
 /// Examples:
 ///     >>> from pkcore import Cards, Eval
 ///     >>> # Typically obtained via Game.turn_case_evals() rather than constructed directly.
-#[pyclass(name = "Eval")]
+#[pyclass(from_py_object, name = "Eval")]
 #[derive(Clone)]
 pub struct Eval(PkEval);
 
@@ -693,7 +695,7 @@ impl Eval {
 ///     >>> case_evals = game.turn_case_evals()
 ///     >>> len(case_evals)
 ///     46
-#[pyclass(name = "CaseEvals")]
+#[pyclass(from_py_object, name = "CaseEvals")]
 #[derive(Clone)]
 pub struct CaseEvals(PkCaseEvals);
 
@@ -724,7 +726,7 @@ impl CaseEvals {
 ///     >>> outs = Outs.from_case_evals(game.turn_case_evals())
 ///     >>> outs.len_for_player(1)
 ///     1
-#[pyclass(name = "Outs")]
+#[pyclass(from_py_object, name = "Outs")]
 #[derive(Clone)]
 pub struct Outs(PkOuts);
 
@@ -787,7 +789,7 @@ impl Outs {
 ///     >>> outs = Outs.from_case_evals(game.turn_case_evals())
 ///     >>> outs.longest_player()
 ///     2
-#[pyclass(name = "Game")]
+#[pyclass(skip_from_py_object, name = "Game")]
 pub struct Game(PkGame);
 
 #[pymethods]
@@ -805,8 +807,122 @@ impl Game {
         CaseEvals(self.0.turn_case_evals())
     }
 
+    /// Evaluate all players' best hands and win percentages at the flop.
+    ///
+    /// Returns None if the board does not have a flop.
+    fn flop_eval(&self) -> Option<FlopEval> {
+        PkFlopEval::try_from(self.0.clone()).ok().map(FlopEval)
+    }
+
+    /// Evaluate all players' best hands, win percentages, and outs at the turn.
+    ///
+    /// Returns None if the board does not have a turn card.
+    fn turn_eval(&self) -> Option<TurnEval> {
+        PkTurnEval::try_from(&self.0).ok().map(TurnEval)
+    }
+
+    /// Returns the formatted "Nuts @ Turn" string — all distinct best hands
+    /// possible at the turn, sorted by strength.
+    ///
+    /// Returns an empty string if the board does not have a turn card.
+    fn turn_nuts_display(&self) -> String {
+        format!("{}", self.0.turn_the_nuts().to_evals())
+    }
+
+    /// Returns the formatted river result string showing each player's final
+    /// hand and the winner.
+    ///
+    /// Returns an empty string if the board does not have a river card.
+    fn river_display(&self) -> String {
+        match self.0.river_case_eval() {
+            Err(_) => String::new(),
+            Ok(case_eval) => {
+                let winning_hand_rank = case_eval.winning_hand_rank();
+                let mut out = format!(
+                    "\nThe River: {} {} {}\n",
+                    self.0.board.flop, self.0.board.turn, self.0.board.river
+                );
+                out.push_str(&format!(" Winning Hand: {winning_hand_rank}\n"));
+                for (i, eval) in case_eval.iter().enumerate() {
+                    if eval.hand_rank == winning_hand_rank {
+                        out.push_str(&format!("   Player #{i}: {eval} has the best hand!\n"));
+                    } else if eval.hand_rank.value > 0 {
+                        out.push_str(&format!("   Player #{i}: {eval}\n"));
+                    }
+                }
+                out
+            }
+        }
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
     fn __repr__(&self) -> String {
         "Game(hole_cards=..., board=...)".to_string()
+    }
+}
+
+// ============================================================
+// FlopEval
+// ============================================================
+
+/// Per-player hand evaluation and win percentages at the flop.
+///
+/// Obtain via `game.flop_eval()`. Printing a FlopEval shows each player's
+/// best hand, win percentage, and the board state.
+///
+/// Examples:
+///     >>> from pkpy import HoleCards, Board, Game
+///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
+///     >>> board = Board.parse("9c 6d 5h")
+///     >>> game = Game(hc, board)
+///     >>> flop = game.flop_eval()
+///     >>> print(flop)
+#[pyclass(from_py_object, name = "FlopEval")]
+#[derive(Clone)]
+pub struct FlopEval(PkFlopEval);
+
+#[pymethods]
+impl FlopEval {
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "FlopEval(...)".to_string()
+    }
+}
+
+// ============================================================
+// TurnEval
+// ============================================================
+
+/// Per-player hand evaluation, win percentages, and outs at the turn.
+///
+/// Obtain via `game.turn_eval()`. Printing a TurnEval shows each player's
+/// best hand, win percentage, and outs going into the river.
+///
+/// Examples:
+///     >>> from pkpy import HoleCards, Board, Game
+///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
+///     >>> board = Board.parse("9c 6d 5h 5s")
+///     >>> game = Game(hc, board)
+///     >>> turn = game.turn_eval()
+///     >>> print(turn)
+#[pyclass(from_py_object, name = "TurnEval")]
+#[derive(Clone)]
+pub struct TurnEval(PkTurnEval);
+
+#[pymethods]
+impl TurnEval {
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "TurnEval(...)".to_string()
     }
 }
 
@@ -815,7 +931,7 @@ impl Game {
 // ============================================================
 
 /// The suit qualifier for a hand combo: suited, offsuit, or both.
-#[pyclass(name = "Qualifier")]
+#[pyclass(from_py_object, name = "Qualifier")]
 #[derive(Clone)]
 pub struct Qualifier(PkQualifier);
 
@@ -874,7 +990,7 @@ impl Qualifier {
 ///     True
 ///     >>> c.total_pairs()
 ///     4
-#[pyclass(name = "Combo")]
+#[pyclass(from_py_object, name = "Combo")]
 #[derive(Clone)]
 pub struct Combo(PkCombo);
 
@@ -997,7 +1113,7 @@ impl Combo {
 ///     False
 ///     >>> str(t.first())
 ///     'A♠'
-#[pyclass(name = "Two")]
+#[pyclass(from_py_object, name = "Two")]
 #[derive(Clone)]
 pub struct Two(PkTwo);
 
@@ -1072,7 +1188,7 @@ impl Two {
 ///     >>> twos = Combos.parse("QQ+, AK").explode()
 ///     >>> len(twos)
 ///     30
-#[pyclass(name = "Twos")]
+#[pyclass(from_py_object, name = "Twos")]
 #[derive(Clone)]
 pub struct Twos(PkTwos);
 
@@ -1161,7 +1277,7 @@ impl Twos {
 ///     >>> twos = r.explode()
 ///     >>> len(twos)
 ///     30
-#[pyclass(name = "Combos")]
+#[pyclass(from_py_object, name = "Combos")]
 #[derive(Clone)]
 pub struct Combos(PkCombos);
 
@@ -1283,6 +1399,8 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CaseEvals>()?;
     m.add_class::<Outs>()?;
     m.add_class::<Game>()?;
+    m.add_class::<FlopEval>()?;
+    m.add_class::<TurnEval>()?;
     m.add_class::<Qualifier>()?;
     m.add_class::<Combo>()?;
     m.add_class::<Two>()?;
