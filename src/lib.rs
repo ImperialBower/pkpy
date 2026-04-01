@@ -1560,7 +1560,12 @@ impl Versus {
     ///
     /// Returns a list of HUPResult objects, one per villain hand.
     fn hups_at_deal(&self) -> Vec<HUPResult> {
-        self.0.hups_at_deal().into_values().map(HUPResult).collect()
+        self.0
+            .hups_at_deal()
+            .unwrap()
+            .into_values()
+            .map(HUPResult)
+            .collect()
     }
 
     /// Aggregate preflop equity across all villain hands.
