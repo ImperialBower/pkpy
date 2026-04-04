@@ -570,6 +570,212 @@ print(hand.display_results())
 
 ---
 
+## Casino Table Simulation
+
+pkpy exposes pkcore's casino table simulation layer, which models a heads-up or multi-player poker table with blinds, betting, and chip accounting. The key types are `Dealer` (the engine), `Player`, `ForcedBets`, and the log/result types.
+
+### `ForcedBets`
+
+Configures the blinds and optional ante for a hand.
+
+```python
+from pkpy import ForcedBets
+
+bets = ForcedBets(small_blind=50, big_blind=100)
+bets = ForcedBets(small_blind=50, big_blind=100, ante=25)
+```
+
+### `Stack`
+
+A chip count wrapper.
+
+```python
+from pkpy import Stack
+
+s = Stack(1000)
+s.count()     # -> 1000
+s.is_empty()  # -> False
+```
+
+### `Player`
+
+A player seated at the table with a name and chip stack.
+
+```python
+from pkpy import Player
+
+p = Player("Alice", 1000)
+p.handle          # -> "Alice"
+p.chips()         # -> 1000  (current stack, excluding chips committed to pot)
+p.total_chips()   # -> 1000  (chips + any committed amount)
+p.state()         # -> PlayerState
+p.is_active()     # -> bool
+p.is_folded()     # -> bool
+p.is_all_in()     # -> bool
+p.is_sitting_out()# -> bool
+```
+
+### `PlayerState`
+
+Describes what a player is currently doing at the table.
+
+```python
+state = player.state()
+state.kind()      # -> str  ("Active", "Folded", "AllIn", "SittingOut")
+state.amount()    # -> int  (chips committed in current state, e.g. blind amount)
+state.is_active()     # -> bool
+state.is_folded()     # -> bool
+state.is_all_in()     # -> bool
+state.is_sitting_out()# -> bool
+```
+
+### `Seatbit`
+
+A compact bitset of occupied seat numbers (seats 0–15).
+
+```python
+from pkpy import Seatbit
+
+sb = dealer.ready()
+sb.contains(0)   # -> bool  (is seat 0 occupied?)
+sb.count()       # -> int   (number of occupied seats)
+sb.as_u16()      # -> int   (raw bitset value)
+```
+
+### `SeatEquity`
+
+Chip allocation tied to a set of seats — used inside `Win` to record who wins what.
+
+```python
+se = win.equity
+se.chips         # -> int   (chip amount)
+se.seats         # -> Seatbit
+se.count()       # -> int   (number of winning seats)
+se.is_nada()     # -> bool  (True if chips == 0)
+```
+
+### `Win`
+
+One entry in a `Winnings` result. Pairs an equity award with the `Eval` that justified it.
+
+```python
+win = winnings.first()
+win.equity   # -> SeatEquity
+win.eval     # -> Eval
+```
+
+### `Winnings`
+
+The payout result returned by `Dealer.end_hand()`.
+
+```python
+winnings = dealer.end_hand()
+len(winnings)           # -> int  (number of pots/side-pots awarded)
+winnings.first()        # -> Win  (main pot winner)
+winnings.to_list()      # -> list[Win]
+```
+
+### `TableAction`
+
+A single event recorded in the table log.
+
+```python
+action = log.last()
+action.kind()    # -> str  ("Bet", "Raise", "Call", "Check", "Fold", "PostBlind", etc.)
+action.seat()    # -> int  (seat number that took the action)
+action.amount()  # -> int  (chip amount, 0 for non-chip actions like fold/check)
+```
+
+### `TableLog`
+
+A running record of all actions taken during the hand.
+
+```python
+log = dealer.event_log()
+log.entries()              # -> list[TableAction]  (all recorded events)
+log.last()                 # -> TableAction | None
+log.last_player_action()   # -> TableAction | None  (last non-system action)
+log.have_posted_blinds()   # -> bool
+```
+
+### `Dealer`
+
+The table engine. Manages seating, hand flow, betting, and chip accounting.
+
+```python
+from pkpy import Dealer, ForcedBets, Player
+
+dealer = Dealer(ForcedBets(50, 100))
+
+# Seat players — consumes the Player object (ownership transfer)
+seat0 = dealer.seat_player(alice)   # -> int  (assigned seat number)
+seat1 = dealer.seat_player(bob)
+
+# Hand lifecycle
+dealer.start_hand()           # post blinds, deal hole cards
+dealer.advance_street()       # deal flop / turn / river
+winnings = dealer.end_hand()  # showdown, chip transfer
+
+# Betting actions (seat is the acting seat number)
+dealer.bet(seat, amount)
+dealer.call(seat)
+dealer.check(seat)
+dealer.raise_to(seat, amount)
+dealer.all_in(seat)
+dealer.fold(seat)
+
+# State queries
+dealer.ready()           # -> Seatbit  (seats with players ready to play)
+dealer.next_to_act()     # -> int | None  (seat that must act next)
+dealer.pot()             # -> int  (current pot total)
+dealer.chips_at(seat)    # -> int  (chip count at a seat, 0 if empty)
+dealer.event_log()       # -> TableLog
+```
+
+### Casino example
+
+```python
+from pkpy import Dealer, ForcedBets, Player, Winnings
+
+# Set up a heads-up table: 50/100 blinds
+dealer = Dealer(ForcedBets(50, 100))
+
+alice = Player("Alice", 1000)
+bob   = Player("Bob",   1000)
+
+s_alice = dealer.seat_player(alice)
+s_bob   = dealer.seat_player(bob)
+
+# Start the hand — posts blinds, deals hole cards
+dealer.start_hand()
+
+print(f"Pot after blinds: {dealer.pot()}")      # -> 0 (blinds not in pot yet)
+print(f"Next to act: {dealer.next_to_act()}")   # -> seat of first actor
+
+# Simple action: big blind checks, small blind raises, BB calls
+acting = dealer.next_to_act()
+dealer.call(acting)                             # SB calls
+acting = dealer.next_to_act()
+dealer.check(acting)                            # BB checks
+
+# Deal the flop, turn, river
+dealer.advance_street()   # flop
+dealer.advance_street()   # turn
+dealer.advance_street()   # river
+
+# Showdown
+winnings = dealer.end_hand()
+winner = winnings.first()
+print(f"Pot won: {winner.equity.chips}")
+print(f"Winning seat(s): {winner.equity.seats.as_u16()}")
+
+# Inspect the action log
+for action in dealer.event_log().entries():
+    print(f"  seat {action.seat()}: {action.kind()} {action.amount() or ''}")
+```
+
+---
+
 ## Complete Example
 
 ```python
@@ -638,8 +844,8 @@ python3 -m maturin publish
 
 This project wraps pkcore as a versioned crates.io dependency. The wrapper exposes the
 analysis-focused surface most useful from Python: card/deck primitives, hand evaluation, outs
-calculation, GTO range analysis, heads-up equity, binary card maps, and Pluribus log parsing.
-Lower-level types (SQLite storage, casino table simulation) are not exposed.
+calculation, GTO range analysis, heads-up equity, binary card maps, Pluribus log parsing, and
+casino table simulation. Lower-level types (SQLite storage) are not exposed.
 
 ---
 
