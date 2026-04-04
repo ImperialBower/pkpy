@@ -396,6 +396,97 @@ print(f"Offsuit: {len(twos.filter_is_not_suited())}")
 
 ---
 
+## Binary Card Maps
+
+pkpy exposes pkcore's binary card map types, which provide compact, high-performance hand evaluation storage. These are the building blocks for precomputed lookup tables.
+
+### `Bard`
+
+A 64-bit bitset where each of the 52 cards occupies one bit. Set operations (union, intersection, membership) are single CPU instructions.
+
+```python
+from pkpy import Bard, Card, Cards
+
+# Construct
+b = Bard.from_card(Card.parse("As"))        # single card
+b = Bard.from_cards(Cards.parse("As Ks"))   # from a Cards collection
+b = Bard.from_u64(4_362_862_139_015_168)    # from a raw u64
+
+# Constants
+Bard.BLANK    # all bits zero
+Bard.ALL      # all 52 card bits set
+
+# Operations
+b2 = b.fold_in(Card.parse("Qs"))  # returns new Bard with that card added
+b.as_u64()                         # -> int  (raw bit value)
+b.to_cards()                       # -> Cards  (reconstruct card set)
+b.as_guided_string()               # -> str  (debug visualization)
+```
+
+### `SevenFiveBCM`
+
+A binary card map entry for a 5- or 7-card hand. Stores the hand's `Bard`, the best 5-card sub-hand's `Bard`, and the hand rank value. This is the format used by pkcore's precomputed CSV lookup table.
+
+`rank` follows the Cactus Kev convention: **lower is stronger** (1 = royal flush, 7462 = worst high card).
+
+```python
+from pkpy import Cards, SevenFiveBCM
+
+# Build from a 5-card hand
+bcm = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs Js Ts"))
+bcm.rank    # -> 1  (royal flush)
+bcm.bc      # -> Bard  (bitset of the full hand)
+bcm.best    # -> Bard  (bitset of the best 5-card sub-hand; same as bc for 5 cards)
+
+# Build from a 7-card hand — bc is the full 7-card bard, best is the best 5
+bcm7 = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs Js Ts 9s 8s"))
+bcm7.rank                     # -> 1
+bcm7.bc.to_cards()            # -> Cards (7 cards)
+bcm7.best.to_cards()          # -> Cards (best 5 cards)
+
+# CSV generation (produces the ~5 GB bcm.csv lookup file — slow)
+SevenFiveBCM.default_csv_path           # -> "generated/bcm.csv"
+SevenFiveBCM.generate_csv("bcm.csv")   # enumerate all 5- and 7-card combos
+```
+
+### `IndexCardMap`
+
+Like `SevenFiveBCM` but stores card hands as human-readable display strings instead of `Bard` bitsets. Useful for inspectable CSV output.
+
+```python
+from pkpy import Cards, IndexCardMap
+
+icm = IndexCardMap.from_cards(Cards.parse("As Ks Qs Js Ts"))
+icm.rank     # -> 1
+icm.cards    # -> "A♠ K♠ Q♠ J♠ T♠"
+icm.best     # -> "A♠ K♠ Q♠ J♠ T♠"  (same for 5-card hand)
+
+icm7 = IndexCardMap.from_cards(Cards.parse("As Ks Qs Js Ts 9s 8s"))
+icm7.cards   # -> "A♠ K♠ Q♠ J♠ T♠ 9♠ 8♠"  (all 7 cards)
+icm7.best    # -> "A♠ K♠ Q♠ J♠ T♠"          (best 5)
+
+IndexCardMap.generate_csv("icm.csv")
+```
+
+### BCM example
+
+```python
+from pkpy import Cards, SevenFiveBCM, IndexCardMap
+
+hands = [
+    Cards.parse("As Ks Qs Js Ts"),      # royal flush
+    Cards.parse("As Ks Qs Js 9s"),      # king-high straight flush
+    Cards.parse("As Ad Ah Ac Ks"),      # four aces
+]
+
+for hand in hands:
+    bcm = SevenFiveBCM.from_cards(hand)
+    icm = IndexCardMap.from_cards(hand)
+    print(f"{icm.cards}  rank={bcm.rank}  best={icm.best}")
+```
+
+---
+
 ## Pluribus Log Parsing
 
 pkpy can parse hand histories from the [Pluribus](https://en.wikipedia.org/wiki/Pluribus_(poker_bot)) AI poker logs. Each line in a log file is a `STATE` record encoding one hand.
@@ -547,8 +638,8 @@ python3 -m maturin publish
 
 This project wraps pkcore as a versioned crates.io dependency. The wrapper exposes the
 analysis-focused surface most useful from Python: card/deck primitives, hand evaluation, outs
-calculation, GTO range analysis, heads-up equity, and Pluribus log parsing. Lower-level types
-(binary card maps, SQLite storage, casino table simulation) are not exposed.
+calculation, GTO range analysis, heads-up equity, binary card maps, and Pluribus log parsing.
+Lower-level types (SQLite storage, casino table simulation) are not exposed.
 
 ---
 
