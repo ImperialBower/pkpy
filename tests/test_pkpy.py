@@ -27,7 +27,7 @@ from pkpy import (
     TableAction,
     TableLog,
     Two,
-    Win,
+    PotWin,
     Winnings,
     distinct_2_card_hands,
     distinct_5_card_hands,
@@ -1104,7 +1104,7 @@ class TestDealer:
         d.fold(d.next_to_act())
         winnings = d.end_hand()
         w = winnings.first()
-        assert isinstance(w, Win)
+        assert isinstance(w, PotWin)
 
     def test_win_equity_chips_positive(self):
         d = make_dealer()
