@@ -17,6 +17,15 @@ use pkcore::arrays::two::Two as PkTwo;
 use pkcore::bard::Bard as PkBard;
 use pkcore::card::Card as PkCard;
 use pkcore::cards::Cards as PkCards;
+use pkcore::casino::cashier::chips::Stack as PkStack;
+use pkcore::casino::dealer::{Dealer as PkDealer, DealerError as PkDealerError};
+use pkcore::casino::game::ForcedBets as PkForcedBets;
+use pkcore::casino::player::Player as PkPlayer;
+use pkcore::casino::state::PlayerState as PkPlayerState;
+use pkcore::casino::table::event::{TableAction as PkTableAction, TableLog as PkTableLog};
+use pkcore::casino::table::seats::seat_equity::SeatEquity as PkSeatEquity;
+use pkcore::casino::table::seats::seatbit::Seatbit as PkSeatbit;
+use pkcore::casino::table::winnings::{Win as PkWin, Winnings as PkWinnings};
 use pkcore::deck::Deck as PkDeck;
 use pkcore::play::board::Board as PkBoard;
 use pkcore::play::game::Game as PkGame;
@@ -2225,6 +2234,704 @@ impl Deck {
 }
 
 // ============================================================
+// ForcedBets
+// ============================================================
+
+/// Blind and ante structure for a poker table.
+///
+/// Examples:
+///     >>> from pkcore import ForcedBets
+///     >>> fb = ForcedBets(50, 100)
+///     >>> fb.small_blind
+///     50
+///     >>> fb.big_blind
+///     100
+#[pyclass(from_py_object, name = "ForcedBets")]
+#[derive(Clone)]
+pub struct ForcedBets(PkForcedBets);
+
+#[pymethods]
+impl ForcedBets {
+    #[new]
+    #[pyo3(signature = (small_blind, big_blind, ante = 0))]
+    fn new(small_blind: usize, big_blind: usize, ante: usize) -> Self {
+        if ante == 0 {
+            ForcedBets(PkForcedBets::new(small_blind, big_blind))
+        } else {
+            ForcedBets(PkForcedBets::new_with_ante(small_blind, big_blind, ante))
+        }
+    }
+
+    #[getter]
+    fn small_blind(&self) -> usize {
+        self.0.small_blind
+    }
+
+    #[getter]
+    fn big_blind(&self) -> usize {
+        self.0.big_blind
+    }
+
+    #[getter]
+    fn ante(&self) -> usize {
+        self.0.ante
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "ForcedBets({}, {}, ante={})",
+            self.0.small_blind, self.0.big_blind, self.0.ante
+        )
+    }
+    fn __eq__(&self, other: &ForcedBets) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// PlayerState
+// ============================================================
+
+/// The current action state of a player at the table.
+///
+/// Query with `kind()` (returns a string) and `amount()` (returns the chip
+/// value for states that carry one, or 0 otherwise).
+///
+/// Possible kinds: "Ready", "YetToAct", "Check", "Blind", "Bet", "Call",
+/// "Raise", "ReRaise", "AllIn", "Showdown", "Fold", "Out"
+#[pyclass(from_py_object, name = "PlayerState")]
+#[derive(Clone)]
+pub struct PlayerState(PkPlayerState);
+
+#[pymethods]
+impl PlayerState {
+    /// The name of this state as a string.
+    fn kind(&self) -> &'static str {
+        match self.0 {
+            PkPlayerState::Ready => "Ready",
+            PkPlayerState::YetToAct => "YetToAct",
+            PkPlayerState::Check => "Check",
+            PkPlayerState::Blind(_) => "Blind",
+            PkPlayerState::Bet(_) => "Bet",
+            PkPlayerState::Call(_) => "Call",
+            PkPlayerState::Raise(_) => "Raise",
+            PkPlayerState::ReRaise(_) => "ReRaise",
+            PkPlayerState::AllIn(_) => "AllIn",
+            PkPlayerState::Showdown(_) => "Showdown",
+            PkPlayerState::Fold => "Fold",
+            PkPlayerState::Out => "Out",
+        }
+    }
+
+    /// The chip amount associated with this state (0 for states without an amount).
+    fn amount(&self) -> usize {
+        match self.0 {
+            PkPlayerState::Blind(n)
+            | PkPlayerState::Bet(n)
+            | PkPlayerState::Call(n)
+            | PkPlayerState::Raise(n)
+            | PkPlayerState::ReRaise(n)
+            | PkPlayerState::AllIn(n)
+            | PkPlayerState::Showdown(n) => n,
+            _ => 0,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.0.is_active()
+    }
+    fn is_all_in(&self) -> bool {
+        self.0.is_all_in()
+    }
+    fn is_in_hand(&self) -> bool {
+        self.0.is_in_hand()
+    }
+    fn is_fold(&self) -> bool {
+        matches!(self.0, PkPlayerState::Fold)
+    }
+    fn is_ready(&self) -> bool {
+        matches!(self.0, PkPlayerState::Ready)
+    }
+    fn is_yet_to_act(&self) -> bool {
+        matches!(self.0, PkPlayerState::YetToAct)
+    }
+
+    fn __str__(&self) -> String {
+        self.kind().to_string()
+    }
+    fn __repr__(&self) -> String {
+        if self.amount() > 0 {
+            format!("PlayerState.{}({})", self.kind(), self.amount())
+        } else {
+            format!("PlayerState.{}", self.kind())
+        }
+    }
+    fn __eq__(&self, other: &PlayerState) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Stack
+// ============================================================
+
+/// A chip stack with interior mutability.
+///
+/// Most mutation methods do not require the object to be explicitly mutable —
+/// the stack tracks its count internally.
+///
+/// Examples:
+///     >>> from pkcore import Stack
+///     >>> s = Stack(1000)
+///     >>> s.count()
+///     1000
+#[pyclass(unsendable, name = "Stack")]
+pub struct Stack(PkStack);
+
+#[pymethods]
+impl Stack {
+    #[new]
+    fn new(amount: usize) -> Self {
+        Stack(PkStack::new(amount))
+    }
+
+    /// The current chip count.
+    fn count(&self) -> usize {
+        self.0.count()
+    }
+
+    /// True if this stack has no chips.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0.count())
+    }
+    fn __repr__(&self) -> String {
+        format!("Stack({})", self.0.count())
+    }
+}
+
+// ============================================================
+// Player
+// ============================================================
+
+/// A poker player with a name, chip stack, and action state.
+///
+/// Examples:
+///     >>> from pkcore import Player
+///     >>> p = Player("Alice", 1000)
+///     >>> p.handle
+///     'Alice'
+///     >>> p.chips()
+///     1000
+#[pyclass(unsendable, name = "Player")]
+pub struct Player(PkPlayer);
+
+#[pymethods]
+impl Player {
+    /// Create a player with the given name and chip count.
+    #[new]
+    fn new(handle: String, chips: usize) -> Self {
+        Player(PkPlayer::new_with_chips(handle, chips))
+    }
+
+    /// The player's display name.
+    #[getter]
+    fn handle(&self) -> String {
+        self.0.handle.clone()
+    }
+
+    /// Current chip count (stack only, not including active bet).
+    fn chips(&self) -> usize {
+        self.0.chips.count()
+    }
+
+    /// Total chips (stack + any active bet).
+    fn total_chips(&self) -> usize {
+        self.0.total_chip_count()
+    }
+
+    /// Chips committed to the current hand.
+    fn chips_in_play(&self) -> usize {
+        self.0.get_chips_in_play()
+    }
+
+    /// Current action state.
+    fn state(&self) -> PlayerState {
+        PlayerState(self.0.state.get())
+    }
+
+    fn is_active(&self) -> bool {
+        self.0.is_active()
+    }
+    fn is_all_in(&self) -> bool {
+        self.0.is_all_in()
+    }
+    fn is_in_hand(&self) -> bool {
+        self.0.is_in_hand()
+    }
+    fn is_ready(&self) -> bool {
+        self.0.is_ready()
+    }
+    fn is_out(&self) -> bool {
+        self.0.is_out()
+    }
+    fn is_tapped_out(&self) -> bool {
+        self.0.is_tapped_out()
+    }
+    fn has_bet(&self) -> bool {
+        self.0.has_bet()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{} ({})", self.0.handle, self.0.chips.count())
+    }
+    fn __repr__(&self) -> String {
+        format!("Player('{}', {})", self.0.handle, self.0.chips.count())
+    }
+}
+
+// ============================================================
+// Seatbit
+// ============================================================
+
+/// A bitfield indicating which seats are included in a result or pot.
+///
+/// Each bit corresponds to one seat (bit 0 = seat 0, bit 1 = seat 1, etc.).
+#[pyclass(from_py_object, name = "Seatbit")]
+#[derive(Clone)]
+pub struct Seatbit(PkSeatbit);
+
+#[pymethods]
+impl Seatbit {
+    /// True if the given seat number is set in this bitfield.
+    fn contains(&self, seat_number: u8) -> bool {
+        self.0.contains(seat_number)
+    }
+
+    /// Number of seats set in this bitfield.
+    fn count(&self) -> usize {
+        self.0.count_ones()
+    }
+
+    /// The raw u16 value.
+    fn as_u16(&self) -> u16 {
+        self.0 .0
+    }
+
+    fn __str__(&self) -> String {
+        format!("{:016b}", self.0 .0)
+    }
+    fn __repr__(&self) -> String {
+        format!("Seatbit(0b{:016b})", self.0 .0)
+    }
+    fn __eq__(&self, other: &Seatbit) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// SeatEquity
+// ============================================================
+
+/// Chip equity for a group of seats — how many chips a set of seats won.
+#[pyclass(from_py_object, name = "SeatEquity")]
+#[derive(Clone)]
+pub struct SeatEquity(PkSeatEquity);
+
+#[pymethods]
+impl SeatEquity {
+    /// Chip amount.
+    #[getter]
+    fn chips(&self) -> usize {
+        self.0.chips
+    }
+
+    /// Which seats share this equity.
+    #[getter]
+    fn seats(&self) -> Seatbit {
+        Seatbit(self.0.seats)
+    }
+
+    /// Number of seats sharing this equity.
+    fn count(&self) -> usize {
+        self.0.count_ones()
+    }
+
+    /// True if this equity is zero.
+    fn is_nada(&self) -> bool {
+        self.0.is_nada()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{} chips to {} seat(s)", self.0.chips, self.0.count_ones())
+    }
+    fn __repr__(&self) -> String {
+        format!(
+            "SeatEquity(chips={}, seats={:b})",
+            self.0.chips, self.0.seats.0
+        )
+    }
+    fn __eq__(&self, other: &SeatEquity) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Win
+// ============================================================
+
+/// A single winner record from a completed hand.
+#[pyclass(from_py_object, name = "Win")]
+#[derive(Clone)]
+pub struct Win(PkWin);
+
+#[pymethods]
+impl Win {
+    /// The seat equity (chips and which seats won).
+    #[getter]
+    fn equity(&self) -> SeatEquity {
+        SeatEquity(self.0.equity)
+    }
+
+    /// The winning hand evaluation.
+    #[getter]
+    fn eval(&self) -> Eval {
+        Eval(self.0.eval)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Win(chips={}, rank={})",
+            self.0.equity.chips, self.0.eval.hand_rank.value
+        )
+    }
+}
+
+// ============================================================
+// Winnings
+// ============================================================
+
+/// The payout results from a completed hand — a list of Win records.
+#[pyclass(from_py_object, name = "Winnings")]
+#[derive(Clone)]
+pub struct Winnings(PkWinnings);
+
+#[pymethods]
+impl Winnings {
+    /// Number of winners.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    /// True if there are no winners recorded.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// All win records as a Python list.
+    fn to_list(&self) -> Vec<Win> {
+        self.0.vec().iter().map(|w| Win(w.clone())).collect()
+    }
+
+    /// The primary winner (first Win record).
+    fn first(&self) -> Win {
+        Win(self.0.first())
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Winnings(len={})", self.0.len())
+    }
+}
+
+// ============================================================
+// TableAction
+// ============================================================
+
+/// A single event in the table event log.
+///
+/// Query with `kind()` for the event name, `seat()` for which seat it
+/// concerns (if any), and `amount()` for the chip value (if any).
+#[pyclass(from_py_object, name = "TableAction")]
+#[derive(Clone)]
+pub struct TableAction(PkTableAction);
+
+#[pymethods]
+impl TableAction {
+    /// The event type name (e.g. "Bet", "Fold", "DealtFlop", "EndHand").
+    fn kind(&self) -> String {
+        match &self.0 {
+            PkTableAction::Pause => "Pause".into(),
+            PkTableAction::TableOpen(_) => "TableOpen".into(),
+            PkTableAction::PlayerSeated(_, _) => "PlayerSeated".into(),
+            PkTableAction::NewHand => "NewHand".into(),
+            PkTableAction::ShuffleDeck => "ShuffleDeck".into(),
+            PkTableAction::SetButton(_) => "SetButton".into(),
+            PkTableAction::MoveButton(_) => "MoveButton".into(),
+            PkTableAction::ForcedBets => "ForcedBets".into(),
+            PkTableAction::ForcedBet(_, _) => "ForcedBet".into(),
+            PkTableAction::ForcedBetSmallBlind(_, _) => "ForcedBetSmallBlind".into(),
+            PkTableAction::ForcedBetBigBlind(_, _) => "ForcedBetBigBlind".into(),
+            PkTableAction::BetAnteForced(_, _) => "BetAnteForced".into(),
+            PkTableAction::DealingXCards(_) => "DealingXCards".into(),
+            PkTableAction::Dealt(_, _) => "Dealt".into(),
+            PkTableAction::DealtFlop(_) => "DealtFlop".into(),
+            PkTableAction::DealtTurn(_) => "DealtTurn".into(),
+            PkTableAction::DealtRiver(_) => "DealtRiver".into(),
+            PkTableAction::DealtPlayers => "DealtPlayers".into(),
+            PkTableAction::ForceDealt(_, _) => "ForceDealt".into(),
+            PkTableAction::BringItIn(_) => "BringItIn".into(),
+            PkTableAction::ActionTo(_) => "ActionTo".into(),
+            PkTableAction::Check(_) => "Check".into(),
+            PkTableAction::Bet(_, _) => "Bet".into(),
+            PkTableAction::Call(_, _) => "Call".into(),
+            PkTableAction::Raise(_, _) => "Raise".into(),
+            PkTableAction::AllIn(_, _) => "AllIn".into(),
+            PkTableAction::Fold(_) => "Fold".into(),
+            PkTableAction::PotSize(_) => "PotSize".into(),
+            PkTableAction::SplitPots() => "SplitPots".into(),
+            PkTableAction::MainPot(_) => "MainPot".into(),
+            PkTableAction::SidePot(_) => "SidePot".into(),
+            PkTableAction::SplitPot(_, _) => "SplitPot".into(),
+            PkTableAction::MuckCards(_) => "MuckCards".into(),
+            PkTableAction::MuckPlayerCards(_, _) => "MuckPlayerCards".into(),
+            PkTableAction::TakePlayerCards(_, _) => "TakePlayerCards".into(),
+            PkTableAction::TakeBoardCards(_) => "TakeBoardCards".into(),
+            PkTableAction::ClosesTheAction(_) => "ClosesTheAction".into(),
+            PkTableAction::CloseItOut(_) => "CloseItOut".into(),
+            PkTableAction::EndHand => "EndHand".into(),
+            _ => "Other".into(),
+        }
+    }
+
+    /// The seat number this event concerns, or None.
+    fn seat(&self) -> Option<u8> {
+        self.0.get_seat()
+    }
+
+    /// The chip amount this event concerns, or None.
+    fn amount(&self) -> Option<usize> {
+        self.0.get_amount()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+    fn __repr__(&self) -> String {
+        format!("TableAction('{}')", self.kind())
+    }
+}
+
+// ============================================================
+// TableLog
+// ============================================================
+
+/// The event log for a poker table — an ordered list of TableAction records.
+#[pyclass(unsendable, name = "TableLog")]
+pub struct TableLog(PkTableLog);
+
+#[pymethods]
+impl TableLog {
+    /// All events as a Python list of TableAction objects.
+    fn entries(&self) -> Vec<TableAction> {
+        self.0.entries().into_iter().map(TableAction).collect()
+    }
+
+    /// The most recent event, or None.
+    fn last(&self) -> Option<TableAction> {
+        self.0.last().map(TableAction)
+    }
+
+    /// The most recent player action (bet/fold/call/raise/check), or None.
+    fn last_player_action(&self) -> Option<TableAction> {
+        self.0.last_player_action().map(TableAction)
+    }
+
+    /// True if the blinds have been posted this hand.
+    fn have_posted_blinds(&self) -> bool {
+        self.0.have_posted_blinds()
+    }
+
+    /// Number of events in the log.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("TableLog(len={})", self.0.len())
+    }
+}
+
+// ============================================================
+// Dealer
+// ============================================================
+
+/// The primary interface for running a Texas Hold'em table simulation.
+///
+/// Create a dealer with `ForcedBets` and a seat count, seat players,
+/// then drive the hand lifecycle with `start_hand`, individual action
+/// methods, `advance_street`, and `end_hand`.
+///
+/// Examples:
+///     >>> from pkcore import Dealer, ForcedBets, Player
+///     >>> dealer = Dealer(ForcedBets(50, 100), 6)
+///     >>> dealer.seat_player(Player("Alice", 1000))
+///     0
+///     >>> dealer.seat_player(Player("Bob", 1000))
+///     1
+#[pyclass(unsendable, name = "Dealer")]
+pub struct Dealer(PkDealer);
+
+fn dealer_err(e: PkDealerError) -> PyErr {
+    PyValueError::new_err(format!("{e:?}"))
+}
+
+#[pymethods]
+impl Dealer {
+    /// Create a new dealer with the given blind structure and number of seats.
+    #[new]
+    fn new(forced: &ForcedBets, seat_count: u8) -> Self {
+        Dealer(PkDealer::new(forced.0, seat_count))
+    }
+
+    // ---- Seating ----
+
+    /// Seat a player at the next available seat. Returns the seat number.
+    fn seat_player(&self, player: &mut Player) -> PyResult<u8> {
+        // Take the player out of the Python wrapper to give ownership to the table
+        let p = std::mem::replace(
+            &mut player.0,
+            PkPlayer::new_with_chips("__taken__".into(), 0),
+        );
+        self.0.seat_player(p).map_err(dealer_err)
+    }
+
+    /// Seat a player at a specific seat number (0-indexed).
+    fn seat_player_at(&self, player: &mut Player, seat: u8) -> PyResult<()> {
+        let p = std::mem::replace(
+            &mut player.0,
+            PkPlayer::new_with_chips("__taken__".into(), 0),
+        );
+        self.0.seat_player_at(p, seat).map_err(dealer_err)
+    }
+
+    /// Remove the player from the given seat. Returns the removed Player.
+    fn remove_player(&self, seat: u8) -> PyResult<Player> {
+        self.0.remove_player(seat).map(Player).map_err(dealer_err)
+    }
+
+    // ---- Hand lifecycle ----
+
+    /// Shuffle the deck, post blinds, and deal hole cards to all seated players.
+    fn start_hand(&mut self) -> PyResult<()> {
+        self.0.start_hand().map_err(dealer_err)
+    }
+
+    /// Consolidate bets and deal the next street (flop → turn → river).
+    fn advance_street(&mut self) -> PyResult<()> {
+        self.0.advance_street().map_err(dealer_err)
+    }
+
+    /// Run the showdown and pay out the pot. Returns the Winnings.
+    fn end_hand(&mut self) -> PyResult<Winnings> {
+        self.0.end_hand().map(Winnings).map_err(dealer_err)
+    }
+
+    // ---- Player actions ----
+
+    /// Player at `seat` bets `amount` chips.
+    fn bet(&self, seat: u8, amount: usize) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0
+            .act(DealerAction::Bet { seat, amount })
+            .map_err(dealer_err)
+    }
+
+    /// Player at `seat` calls the current bet.
+    fn call(&self, seat: u8) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0.act(DealerAction::Call { seat }).map_err(dealer_err)
+    }
+
+    /// Player at `seat` checks.
+    fn check(&self, seat: u8) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0.act(DealerAction::Check { seat }).map_err(dealer_err)
+    }
+
+    /// Player at `seat` raises to `amount` chips.
+    fn raise_to(&self, seat: u8, amount: usize) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0
+            .act(DealerAction::Raise { seat, amount })
+            .map_err(dealer_err)
+    }
+
+    /// Player at `seat` goes all-in.
+    fn all_in(&self, seat: u8) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0.act(DealerAction::AllIn { seat }).map_err(dealer_err)
+    }
+
+    /// Player at `seat` folds.
+    fn fold(&self, seat: u8) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0.act(DealerAction::Fold { seat }).map_err(dealer_err)
+    }
+
+    /// Mark player at `seat` as ready to play.
+    fn ready(&self, seat: u8) -> PyResult<()> {
+        use pkcore::casino::dealer::DealerAction;
+        self.0.act(DealerAction::Ready { seat }).map_err(dealer_err)
+    }
+
+    // ---- Table state ----
+
+    /// The table's unique ID as a string.
+    fn table_id(&self) -> String {
+        self.0.table_id().to_string()
+    }
+
+    /// True if a hand is currently in progress.
+    fn is_hand_in_progress(&self) -> bool {
+        self.0.is_hand_in_progress()
+    }
+
+    /// The seat number that is next to act.
+    fn next_to_act(&self) -> u8 {
+        self.0.next_to_act()
+    }
+
+    /// The current pot size in chips.
+    fn pot(&self) -> usize {
+        self.0.pot()
+    }
+
+    /// The chip count for the player at the given seat, or None if the seat is empty.
+    fn chips_at(&self, seat: u8) -> Option<usize> {
+        self.0.chips_at(seat)
+    }
+
+    /// A copy of the full event log.
+    fn event_log(&self) -> TableLog {
+        TableLog(self.0.event_log().clone())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Dealer(id={}, in_progress={})",
+            self.0.table_id(),
+            self.0.is_hand_in_progress()
+        )
+    }
+}
+
+// ============================================================
 // Constants
 // ============================================================
 
@@ -2269,6 +2976,17 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HoleCards>()?;
     m.add_class::<PluribusEvent>()?;
     m.add_class::<Pluribus>()?;
+    m.add_class::<ForcedBets>()?;
+    m.add_class::<PlayerState>()?;
+    m.add_class::<Stack>()?;
+    m.add_class::<Player>()?;
+    m.add_class::<Seatbit>()?;
+    m.add_class::<SeatEquity>()?;
+    m.add_class::<Win>()?;
+    m.add_class::<Winnings>()?;
+    m.add_class::<TableAction>()?;
+    m.add_class::<TableLog>()?;
+    m.add_class::<Dealer>()?;
     m.add_class::<Board>()?;
     m.add_class::<HandRankClass>()?;
     m.add_class::<HandRank>()?;

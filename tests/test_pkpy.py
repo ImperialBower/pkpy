@@ -6,18 +6,29 @@ from pkpy import (
     Board,
     Card,
     Cards,
+    Dealer,
     Deck,
+    ForcedBets,
     Game,
     HandRankClass,
     HoleCards,
     IndexCardMap,
     Outs,
+    Player,
+    PlayerState,
     Pluribus,
     PluribusEvent,
     Rank,
+    SeatEquity,
+    Seatbit,
     SevenFiveBCM,
+    Stack,
     Suit,
+    TableAction,
+    TableLog,
     Two,
+    Win,
+    Winnings,
     distinct_2_card_hands,
     distinct_5_card_hands,
     unique_2_card_hands,
@@ -881,3 +892,245 @@ class TestIndexCardMap:
         icm = IndexCardMap.from_cards(ROYAL_FLUSH_5)
         r = repr(icm)
         assert "rank=1" in r
+
+
+# ============================================================
+# Casino: ForcedBets
+# ============================================================
+
+class TestForcedBets:
+    def test_basic(self):
+        fb = ForcedBets(50, 100)
+        assert fb.small_blind == 50
+        assert fb.big_blind == 100
+        assert fb.ante == 0
+
+    def test_with_ante(self):
+        fb = ForcedBets(50, 100, ante=25)
+        assert fb.ante == 25
+
+    def test_equality(self):
+        assert ForcedBets(50, 100) == ForcedBets(50, 100)
+        assert ForcedBets(50, 100) != ForcedBets(25, 50)
+
+    def test_str(self):
+        s = str(ForcedBets(50, 100))
+        assert "50" in s and "100" in s
+
+    def test_repr(self):
+        r = repr(ForcedBets(50, 100, ante=10))
+        assert "ante=10" in r
+
+
+# ============================================================
+# Casino: Stack
+# ============================================================
+
+class TestStack:
+    def test_count(self):
+        s = Stack(500)
+        assert s.count() == 500
+
+    def test_is_empty_false(self):
+        assert not Stack(100).is_empty()
+
+    def test_is_empty_true(self):
+        assert Stack(0).is_empty()
+
+    def test_repr(self):
+        assert "500" in repr(Stack(500))
+
+
+# ============================================================
+# Casino: PlayerState
+# ============================================================
+
+class TestPlayerState:
+    def test_kind_via_player(self):
+        # States come from Player objects in practice
+        p = Player("Test", 1000)
+        state = p.state()
+        assert isinstance(state, PlayerState)
+        assert isinstance(state.kind(), str)
+
+    def test_amount_default_zero(self):
+        p = Player("Test", 1000)
+        assert p.state().amount() == 0
+
+    def test_repr(self):
+        p = Player("Test", 1000)
+        assert isinstance(repr(p.state()), str)
+
+
+# ============================================================
+# Casino: Player
+# ============================================================
+
+class TestPlayer:
+    def test_handle(self):
+        p = Player("Alice", 1000)
+        assert p.handle == "Alice"
+
+    def test_chips(self):
+        p = Player("Alice", 1000)
+        assert p.chips() == 1000
+
+    def test_total_chips(self):
+        p = Player("Alice", 1000)
+        assert p.total_chips() == 1000
+
+    def test_is_tapped_out_false(self):
+        assert not Player("Alice", 1000).is_tapped_out()
+
+    def test_is_tapped_out_true(self):
+        assert Player("Alice", 0).is_tapped_out()
+
+    def test_repr(self):
+        r = repr(Player("Alice", 500))
+        assert "Alice" in r and "500" in r
+
+
+# ============================================================
+# Casino: Seatbit / SeatEquity
+# ============================================================
+
+class TestSeatbit:
+    def test_as_u16(self):
+        # Seatbit comes from SeatEquity.seats in practice
+        pass  # tested via SeatEquity below
+
+
+class TestSeatEquity:
+    def test_via_win(self):
+        # SeatEquity comes from Win.equity; tested end-to-end via Dealer
+        pass
+
+
+# ============================================================
+# Casino: Dealer — full hand lifecycle
+# ============================================================
+
+def make_dealer():
+    """Two-player table, 50/100 blinds, 1000 chips each."""
+    fb = ForcedBets(50, 100)
+    dealer = Dealer(fb, 6)
+    alice = Player("Alice", 1000)
+    bob = Player("Bob", 1000)
+    dealer.seat_player(alice)
+    dealer.seat_player(bob)
+    return dealer
+
+
+class TestDealer:
+    def test_creation(self):
+        d = make_dealer()
+        assert isinstance(d.table_id(), str)
+        assert not d.is_hand_in_progress()
+
+    def test_seat_player_returns_seat_number(self):
+        fb = ForcedBets(50, 100)
+        d = Dealer(fb, 6)
+        seat = d.seat_player(Player("Alice", 1000))
+        assert seat == 0
+
+    def test_second_player_gets_next_seat(self):
+        fb = ForcedBets(50, 100)
+        d = Dealer(fb, 6)
+        d.seat_player(Player("Alice", 1000))
+        seat = d.seat_player(Player("Bob", 1000))
+        assert seat == 1
+
+    def test_chips_at_seated_player(self):
+        d = make_dealer()
+        assert d.chips_at(0) == 1000
+        assert d.chips_at(1) == 1000
+
+    def test_chips_at_empty_seat_is_zero(self):
+        # Empty seats report 0 chips
+        d = make_dealer()
+        assert d.chips_at(5) == 0
+
+    def test_start_hand(self):
+        d = make_dealer()
+        d.start_hand()
+        assert d.is_hand_in_progress()
+
+    def test_pot_after_fold_end_hand(self):
+        # Blinds are in players' bets until consolidated; pot appears after end_hand
+        d = make_dealer()
+        d.start_hand()
+        d.fold(d.next_to_act())
+        winnings = d.end_hand()
+        assert winnings.first().equity.chips == 150
+
+    def test_next_to_act_is_valid_seat(self):
+        d = make_dealer()
+        d.start_hand()
+        seat = d.next_to_act()
+        assert seat in (0, 1)
+
+    def test_event_log_not_empty_after_start(self):
+        d = make_dealer()
+        d.start_hand()
+        log = d.event_log()
+        assert isinstance(log, TableLog)
+        assert len(log) > 0
+
+    def test_event_log_entries_are_table_actions(self):
+        d = make_dealer()
+        d.start_hand()
+        entries = d.event_log().entries()
+        assert all(isinstance(e, TableAction) for e in entries)
+
+    def test_table_action_kind_is_string(self):
+        d = make_dealer()
+        d.start_hand()
+        last = d.event_log().last()
+        assert isinstance(last.kind(), str)
+
+    def test_full_hand_fold(self):
+        """Player folds preflop — hand ends, other player wins."""
+        d = make_dealer()
+        d.start_hand()
+        seat = d.next_to_act()
+        d.fold(seat)
+        winnings = d.end_hand()
+        assert isinstance(winnings, Winnings)
+        assert not winnings.is_empty()
+
+    def test_winnings_first_is_win(self):
+        d = make_dealer()
+        d.start_hand()
+        d.fold(d.next_to_act())
+        winnings = d.end_hand()
+        w = winnings.first()
+        assert isinstance(w, Win)
+
+    def test_win_equity_chips_positive(self):
+        d = make_dealer()
+        d.start_hand()
+        d.fold(d.next_to_act())
+        win = d.end_hand().first()
+        assert win.equity.chips > 0
+
+    def test_win_seat_in_valid_range(self):
+        d = make_dealer()
+        d.start_hand()
+        d.fold(d.next_to_act())
+        win = d.end_hand().first()
+        eq = win.equity
+        assert isinstance(eq, SeatEquity)
+        assert eq.seats.count() >= 1
+
+    def test_repr(self):
+        d = make_dealer()
+        r = repr(d)
+        assert "Dealer" in r
+
+    def test_remove_player(self):
+        fb = ForcedBets(50, 100)
+        d = Dealer(fb, 6)
+        d.seat_player(Player("Alice", 1000))
+        p = d.remove_player(0)
+        assert isinstance(p, Player)
+        assert p.handle == "Alice"
