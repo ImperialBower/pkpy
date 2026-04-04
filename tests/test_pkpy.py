@@ -5,12 +5,16 @@ from pkpy import (
     Board,
     Card,
     Cards,
+    Deck,
     Game,
     HandRankClass,
     HoleCards,
     Outs,
+    Pluribus,
+    PluribusEvent,
     Rank,
     Suit,
+    Two,
     distinct_2_card_hands,
     distinct_5_card_hands,
     unique_2_card_hands,
@@ -313,3 +317,388 @@ class TestConstants:
 
     def test_distinct_2_card_hands(self):
         assert distinct_2_card_hands() == 169
+
+
+# ============================================================
+# Rank (new methods)
+# ============================================================
+
+class TestRankNewMethods:
+    def test_prime_ace(self):
+        assert Rank.ACE.prime() == 41
+
+    def test_prime_deuce(self):
+        assert Rank.DEUCE.prime() == 2
+
+    def test_bits_nonzero(self):
+        assert Rank.ACE.bits() > 0
+        assert Rank.DEUCE.bits() > 0
+
+    def test_number_ace(self):
+        assert Rank.ACE.number() == 12
+
+    def test_number_deuce(self):
+        assert Rank.DEUCE.number() == 0
+
+    def test_number_ordering(self):
+        assert Rank.DEUCE.number() < Rank.TREY.number() < Rank.ACE.number()
+
+
+# ============================================================
+# Card (new methods)
+# ============================================================
+
+class TestCardNewMethods:
+    def test_bit_string_is_string(self):
+        s = Card.parse("As").bit_string()
+        assert isinstance(s, str)
+        assert len(s) > 0
+
+    def test_get_rank_prime(self):
+        assert Card.parse("As").get_rank_prime() == 41
+        assert Card.parse("2c").get_rank_prime() == 2
+
+    def test_get_letter_index(self):
+        assert Card.parse("As").get_letter_index() == "AS"
+        assert Card.parse("K♥").get_letter_index() == "KH"
+
+
+# ============================================================
+# Deck
+# ============================================================
+
+class TestDeck:
+    def test_len(self):
+        assert Deck.len() == 52
+
+    def test_poker_cards_length(self):
+        assert len(Deck.poker_cards()) == 52
+
+    def test_poker_cards_shuffled_length(self):
+        assert len(Deck.poker_cards_shuffled()) == 52
+
+    def test_poker_cards_is_dealt(self):
+        assert Deck.poker_cards().is_dealt()
+
+    def test_get_first_card(self):
+        card = Deck.get(0)
+        assert isinstance(card, Card)
+        assert card.is_dealt()
+
+    def test_get_all_indices(self):
+        cards = [Deck.get(i) for i in range(52)]
+        assert len(set(str(c) for c in cards)) == 52
+
+    def test_shuffled_contains_same_cards(self):
+        ordered = Deck.poker_cards()
+        shuffled = Deck.poker_cards_shuffled()
+        assert len(shuffled) == len(ordered)
+        for card in ordered.to_list():
+            assert shuffled.contains(card)
+
+
+# ============================================================
+# Cards (new methods)
+# ============================================================
+
+class TestCardsNewMethods:
+    def test_is_empty_false(self):
+        assert not Cards.parse("As Ks").is_empty()
+
+    def test_is_empty_true(self):
+        cards = Cards.parse("As")
+        cards.draw_all()
+        assert cards.is_empty()
+
+    def test_insert(self):
+        cards = Cards.parse("As")
+        inserted = cards.insert(Card.parse("Ks"))
+        assert inserted
+        assert len(cards) == 2
+
+    def test_insert_duplicate_returns_false(self):
+        cards = Cards.parse("As")
+        assert not cards.insert(Card.parse("As"))
+        assert len(cards) == 1
+
+    def test_remove(self):
+        cards = Cards.parse("As Ks")
+        removed = cards.remove(Card.parse("As"))
+        assert removed
+        assert len(cards) == 1
+        assert not cards.contains(Card.parse("As"))
+
+    def test_remove_absent_returns_false(self):
+        cards = Cards.parse("As")
+        assert not cards.remove(Card.parse("Ks"))
+
+    def test_get_index(self):
+        cards = Cards.parse("As Ks")
+        assert cards.get_index(0) == Card.parse("As")
+        assert cards.get_index(1) == Card.parse("Ks")
+        assert cards.get_index(99) is None
+
+    def test_append(self):
+        a = Cards.parse("As Ks")
+        b = Cards.parse("Qh Jh")
+        a.append(b)
+        assert len(a) == 4
+
+    def test_draw_one(self):
+        cards = Cards.parse("As Ks Qh")
+        card = cards.draw_one()
+        assert isinstance(card, Card)
+        assert len(cards) == 2
+
+    def test_draw_one_empty_raises(self):
+        cards = Cards.parse("As")
+        cards.draw_one()
+        with pytest.raises(ValueError):
+            cards.draw_one()
+
+    def test_draw(self):
+        cards = Cards.parse("As Ks Qh Jd")
+        drawn = cards.draw(2)
+        assert len(drawn) == 2
+        assert len(cards) == 2
+
+    def test_draw_too_many_raises(self):
+        cards = Cards.parse("As Ks")
+        with pytest.raises(ValueError):
+            cards.draw(5)
+
+    def test_draw_all(self):
+        cards = Cards.parse("As Ks Qh")
+        rest = cards.draw_all()
+        assert len(rest) == 3
+        assert len(cards) == 0
+
+    def test_shuffle_returns_same_cards(self):
+        cards = Cards.parse("As Ks Qh Jd Tc")
+        shuffled = cards.shuffle()
+        assert len(shuffled) == len(cards)
+        for card in cards.to_list():
+            assert shuffled.contains(card)
+
+    def test_shuffle_in_place(self):
+        cards = Cards.parse("As Ks Qh Jd Tc")
+        original = set(str(c) for c in cards.to_list())
+        cards.shuffle_in_place()
+        shuffled = set(str(c) for c in cards.to_list())
+        assert original == shuffled
+
+    def test_sort(self):
+        cards = Cards.parse("2c As Kh")
+        sorted_cards = cards.sort()
+        lst = sorted_cards.to_list()
+        assert lst[0].rank() == Rank.ACE
+
+    def test_filter_by_suit(self):
+        cards = Cards.parse("As Kh Qh Jd")
+        hearts = cards.filter_by_suit(Suit.HEARTS)
+        assert len(hearts) == 2
+        for card in hearts.to_list():
+            assert card.suit() == Suit.HEARTS
+
+    def test_minus(self):
+        a = Cards.parse("As Ks Qh Jd")
+        b = Cards.parse("As Qh")
+        result = a.minus(b)
+        assert len(result) == 2
+        assert not result.contains(Card.parse("As"))
+        assert not result.contains(Card.parse("Qh"))
+
+    def test_combinations(self):
+        cards = Cards.parse("As Ks Qh")
+        combos = cards.combinations(2)
+        assert len(combos) == 3
+        assert all(len(c) == 2 for c in combos)
+
+    def test_deck_minus(self):
+        hand = Cards.parse("As Ks")
+        rest = hand.deck_minus()
+        assert len(rest) == 50
+        assert not rest.contains(Card.parse("As"))
+        assert not rest.contains(Card.parse("Ks"))
+
+    def test_deck_primed(self):
+        hand = Cards.parse("As Ks")
+        primed = hand.deck_primed()
+        assert len(primed) == 52
+        assert primed.get_index(0) == Card.parse("As")
+        assert primed.get_index(1) == Card.parse("Ks")
+
+
+# ============================================================
+# HoleCards (new methods)
+# ============================================================
+
+class TestHoleCardsNewMethods:
+    def test_is_empty_false(self):
+        hc = HoleCards.parse("As Kh")
+        assert not hc.is_empty()
+
+    def test_get(self):
+        hc = HoleCards.parse("As Kh 8d Kc")
+        first = hc.get(0)
+        assert first is not None
+        assert isinstance(first, Two)
+
+    def test_get_out_of_bounds(self):
+        hc = HoleCards.parse("As Kh")
+        assert hc.get(5) is None
+
+    def test_to_list(self):
+        hc = HoleCards.parse("As Kh 8d Kc")
+        lst = hc.to_list()
+        assert len(lst) == 2
+        assert all(isinstance(t, Two) for t in lst)
+
+    def test_push(self):
+        hc = HoleCards.parse("As Kh")
+        hc.push(Two.parse("Qd Jc"))
+        assert len(hc) == 2
+
+
+# ============================================================
+# Game (new methods)
+# ============================================================
+
+class TestGameNewMethods:
+    def _make_turn_game(self):
+        hc = HoleCards.parse("As Kh 8d Kc")
+        board = Board.parse("Ac 8h 7h 9s")
+        return Game(hc, board)
+
+    def _make_flop_game(self):
+        hc = HoleCards.parse("As Kh 8d Kc")
+        board = Board.parse("Ac 8h 7h")
+        return Game(hc, board)
+
+    def test_has_dealt_turn_true(self):
+        assert self._make_turn_game().has_dealt_turn()
+
+    def test_has_dealt_turn_false(self):
+        assert not self._make_flop_game().has_dealt_turn()
+
+    def test_turn_eval_for_player(self):
+        game = self._make_turn_game()
+        eval_ = game.turn_eval_for_player(0)
+        assert eval_ is not None
+
+    def test_turn_remaining_board(self):
+        game = self._make_turn_game()
+        remaining = game.turn_remaining_board()
+        assert isinstance(remaining, Cards)
+        # excludes the 4 board cards only (not hole cards)
+        assert len(remaining) == 48
+
+    def test_flop_and_turn(self):
+        game = self._make_turn_game()
+        four = game.flop_and_turn()
+        assert isinstance(four, Cards)
+        assert len(four) == 4
+
+
+# ============================================================
+# Pluribus
+# ============================================================
+
+LOG = "STATE:27:r200ffcfc/cr850cf/cr1825r3775c/r10000c:Qc4h|Tc9c|8sAs|Qh7c|JcQd|5h5d/3h7s5c/Qs/6c:-50|-200|-10000|0|0|10250:Eddie|Bill|Pluribus|MrWhite|Gogo|Budd"
+PREFLOP_LOG = "STATE:0:ffr225fff:3c9s|6d5s|9dTs|2sQs|AdKd|7cTc:-50|-100|0|0|150|0:MrWhite|Gogo|Budd|Eddie|Bill|Pluribus"
+
+
+class TestPluribusEvent:
+    def test_fold(self):
+        hand = Pluribus.parse(PREFLOP_LOG)
+        folds = [e for e in hand.actions() if e.is_fold()]
+        assert len(folds) > 0
+        assert folds[0].is_fold()
+        assert not folds[0].is_call()
+        assert not folds[0].is_raise()
+        assert folds[0].raise_amount() is None
+
+    def test_raise(self):
+        hand = Pluribus.parse(PREFLOP_LOG)
+        raises = [e for e in hand.actions() if e.is_raise()]
+        assert len(raises) == 1
+        assert raises[0].raise_amount() == 225
+
+    def test_str_fold(self):
+        hand = Pluribus.parse(PREFLOP_LOG)
+        fold = next(e for e in hand.actions() if e.is_fold())
+        assert str(fold) == "Fold"
+
+    def test_str_raise(self):
+        hand = Pluribus.parse(PREFLOP_LOG)
+        raise_ = next(e for e in hand.actions() if e.is_raise())
+        assert "225" in str(raise_)
+
+
+class TestPluribus:
+    def test_parse_index(self):
+        hand = Pluribus.parse(LOG)
+        assert hand.index == 27
+
+    def test_parse_players(self):
+        hand = Pluribus.parse(LOG)
+        assert hand.players == ["Eddie", "Bill", "Pluribus", "MrWhite", "Gogo", "Budd"]
+
+    def test_parse_winnings(self):
+        hand = Pluribus.parse(LOG)
+        assert hand.winnings == [-50, -200, -10000, 0, 0, 10250]
+        assert sum(hand.winnings) == 0
+
+    def test_parse_hole_cards(self):
+        hand = Pluribus.parse(LOG)
+        assert len(hand.hole_cards) == 6
+
+    def test_parse_board(self):
+        hand = Pluribus.parse(LOG)
+        assert isinstance(hand.board, Board)
+
+    def test_parse_raw(self):
+        hand = Pluribus.parse(LOG)
+        assert hand.raw == LOG
+
+    def test_rounds(self):
+        hand = Pluribus.parse(LOG)
+        rounds = hand.rounds()
+        assert len(rounds) == 4
+        assert rounds[0] == "r200ffcfc"
+
+    def test_actions_flat(self):
+        hand = Pluribus.parse(LOG)
+        actions = hand.actions()
+        assert len(actions) > 0
+        assert all(isinstance(e, PluribusEvent) for e in actions)
+
+    def test_actions_for_round(self):
+        hand = Pluribus.parse(LOG)
+        round0 = hand.actions_for_round(0)
+        assert len(round0) > 0
+        assert round0[0].is_raise()
+        assert round0[0].raise_amount() == 200
+
+    def test_actions_for_invalid_round(self):
+        hand = Pluribus.parse(LOG)
+        assert hand.actions_for_round(99) == []
+
+    def test_display_results(self):
+        hand = Pluribus.parse(LOG)
+        result = hand.display_results()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_parse_preflop_only(self):
+        hand = Pluribus.parse(PREFLOP_LOG)
+        assert hand.index == 0
+        assert len(hand.players) == 6
+
+    def test_parse_invalid_raises(self):
+        with pytest.raises(ValueError):
+            Pluribus.parse("not a valid log line")
+
+    def test_str(self):
+        hand = Pluribus.parse(LOG)
+        assert isinstance(str(hand), str)
