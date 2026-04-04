@@ -1,15 +1,23 @@
 use pkcore::analysis::case_evals::CaseEvals as PkCaseEvals;
 use pkcore::analysis::class::HandRankClass as PkHandRankClass;
+use pkcore::analysis::ev::Ev as PkEv;
 use pkcore::analysis::eval::Eval as PkEval;
 use pkcore::analysis::gto::combo::{Combo as PkCombo, Qualifier as PkQualifier};
 use pkcore::analysis::gto::combo_pairs::ComboPairs as PkComboPairs;
 use pkcore::analysis::gto::combos::Combos as PkCombos;
 use pkcore::analysis::gto::odds::WinLoseDraw as PkWinLoseDraw;
+use pkcore::analysis::gto::solver::Solver as PkSolver;
+use pkcore::analysis::gto::solver_config::{
+    BetSize as PkBetSize, BetSizings as PkBetSizings, SolverConfig as PkSolverConfig,
+};
+use pkcore::analysis::gto::strategy_profile::ActionFrequencies as PkActionFrequencies;
 use pkcore::analysis::gto::twos::Twos as PkTwos;
 use pkcore::analysis::gto::vs::Versus as PkVersus;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
 use pkcore::analysis::nubibus::{Pluribus as PkPluribus, PluribusEvent as PkPluribusEvent};
 use pkcore::analysis::outs::Outs as PkOuts;
+use pkcore::analysis::pot_odds::PotOdds as PkPotOdds;
+use pkcore::analysis::range_equity::RangeEquity as PkRangeEquity;
 use pkcore::analysis::store::bcm::binary_card_map::SevenFiveBCM as PkSevenFiveBCM;
 use pkcore::analysis::store::bcm::index_card_map::IndexCardMap as PkIndexCardMap;
 use pkcore::analysis::store::db::hup::HUPResult as PkHUPResult;
@@ -25,15 +33,19 @@ use pkcore::casino::state::PlayerState as PkPlayerState;
 use pkcore::casino::table::event::{TableAction as PkTableAction, TableLog as PkTableLog};
 use pkcore::casino::table::seats::seat_equity::SeatEquity as PkSeatEquity;
 use pkcore::casino::table::seats::seatbit::Seatbit as PkSeatbit;
-use pkcore::casino::table::winnings::{Win as PkWin, Winnings as PkWinnings};
+use pkcore::casino::table::winnings::{PotWin as PkPotWin, Winnings as PkWinnings};
 use pkcore::deck::Deck as PkDeck;
 use pkcore::play::board::Board as PkBoard;
 use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
+use pkcore::play::stages::deal_eval::DealEval as PkDealEval;
 use pkcore::play::stages::flop_eval::FlopEval as PkFlopEval;
+use pkcore::play::stages::river_eval::RiverEval as PkRiverEval;
 use pkcore::play::stages::turn_eval::TurnEval as PkTurnEval;
 use pkcore::rank::Rank as PkRank;
+use pkcore::ranks::Ranks as PkRanks;
 use pkcore::suit::Suit as PkSuit;
+use pkcore::util::Percentage as PkPercentage;
 use pkcore::{Pile, GTO};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -2583,31 +2595,31 @@ impl SeatEquity {
 }
 
 // ============================================================
-// Win
+// PotWin
 // ============================================================
 
-/// A single winner record from a completed hand.
-#[pyclass(from_py_object, name = "Win")]
+/// A single pot-win record from a completed hand (chips awarded and winning hand rank).
+#[pyclass(from_py_object, name = "PotWin")]
 #[derive(Clone)]
-pub struct Win(PkWin);
+pub struct PotWin(PkPotWin);
 
 #[pymethods]
-impl Win {
+impl PotWin {
     /// The seat equity (chips and which seats won).
     #[getter]
     fn equity(&self) -> SeatEquity {
         SeatEquity(self.0.equity)
     }
 
-    /// The winning hand evaluation.
+    /// The winning hand rank value.
     #[getter]
-    fn eval(&self) -> Eval {
-        Eval(self.0.eval)
+    fn hand_rank(&self) -> HandRank {
+        HandRank(self.0.eval.hand_rank)
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "Win(chips={}, rank={})",
+            "PotWin(chips={}, rank={})",
             self.0.equity.chips, self.0.eval.hand_rank.value
         )
     }
@@ -2635,13 +2647,13 @@ impl Winnings {
     }
 
     /// All win records as a Python list.
-    fn to_list(&self) -> Vec<Win> {
-        self.0.vec().iter().map(|w| Win(w.clone())).collect()
+    fn to_list(&self) -> Vec<PotWin> {
+        self.0.vec().iter().map(|w| PotWin(*w)).collect()
     }
 
-    /// The primary winner (first Win record).
-    fn first(&self) -> Win {
-        Win(self.0.first())
+    /// The primary winner (first PotWin record).
+    fn first(&self) -> PotWin {
+        PotWin(self.0.first())
     }
 
     fn __repr__(&self) -> String {
@@ -2960,6 +2972,624 @@ fn distinct_2_card_hands() -> usize {
 }
 
 // ============================================================
+// PotOdds
+// ============================================================
+
+/// Pot odds and breakeven equity for a single decision point.
+///
+/// Examples:
+///     >>> from pkpy import PotOdds
+///     >>> po = PotOdds(200, 100)
+///     >>> po.breakeven()
+///     0.3333...
+///     >>> po.is_profitable(0.40)
+///     True
+#[pyclass(from_py_object, name = "PotOdds")]
+#[derive(Clone)]
+pub struct PotOdds(PkPotOdds);
+
+#[pymethods]
+impl PotOdds {
+    /// Create a PotOdds from the current pot size and the call amount.
+    #[new]
+    fn new(pot: u64, call: u64) -> Self {
+        PotOdds(PkPotOdds::new(pot, call))
+    }
+
+    /// Chips already in the pot before the call.
+    #[getter]
+    fn pot(&self) -> u64 {
+        self.0.pot
+    }
+
+    /// Amount the player must put in to call.
+    #[getter]
+    fn call(&self) -> u64 {
+        self.0.call
+    }
+
+    /// The fraction of the total pot the player is risking: call / (pot + call).
+    fn ratio(&self) -> f64 {
+        self.0.ratio()
+    }
+
+    /// Minimum equity (0.0–1.0) needed to make calling profitable.
+    fn breakeven(&self) -> f64 {
+        self.0.breakeven()
+    }
+
+    /// True if the given equity (0.0–1.0) justifies a call.
+    fn is_profitable(&self, equity: f64) -> bool {
+        self.0.is_profitable(equity)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PotOdds({}, {})", self.0.pot, self.0.call)
+    }
+
+    fn __eq__(&self, other: &PotOdds) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Ev
+// ============================================================
+
+/// Expected value of a poker call, derived from outcome counts and pot geometry.
+///
+/// Examples:
+///     >>> from pkpy import Ev, WinLoseDraw, PotOdds
+///     >>> odds = WinLoseDraw(7, 3, 0)
+///     >>> po = PotOdds(200, 100)
+///     >>> ev = Ev(odds, po)
+///     >>> ev.is_positive()
+///     True
+///     >>> ev.as_chips()
+///     110.0
+#[pyclass(from_py_object, name = "Ev")]
+#[derive(Clone)]
+pub struct Ev(PkEv);
+
+#[pymethods]
+impl Ev {
+    /// Create an Ev from a WinLoseDraw and PotOdds.
+    #[new]
+    fn new(odds: &WinLoseDraw, pot_odds: &PotOdds) -> Self {
+        Ev(PkEv::new(odds.0, pot_odds.0))
+    }
+
+    /// True if calling is +EV.
+    fn is_positive(&self) -> bool {
+        self.0.is_positive()
+    }
+
+    /// EV in chip units as a float. Returns 0.0 if there are no outcomes.
+    fn as_chips(&self) -> f64 {
+        self.0.as_chips()
+    }
+
+    /// The signed EV numerator: wins × pot - losses × call.
+    fn numerator(&self) -> i64 {
+        self.0.numerator()
+    }
+
+    /// Total number of outcomes (wins + losses + draws).
+    fn total(&self) -> u64 {
+        self.0.total()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Ev(chips={:.2})", self.0.as_chips())
+    }
+
+    fn __eq__(&self, other: &Ev) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Percentage
+// ============================================================
+
+/// A simple fraction expressed as number / total, with a percentage calculation.
+///
+/// Examples:
+///     >>> from pkpy import Percentage
+///     >>> p = Percentage(7, 10)
+///     >>> p.calculate()
+///     70.0
+#[pyclass(from_py_object, name = "Percentage")]
+#[derive(Clone)]
+pub struct Percentage(PkPercentage);
+
+#[pymethods]
+impl Percentage {
+    #[new]
+    fn new(number: usize, total: usize) -> Self {
+        Percentage(PkPercentage::new(number, total))
+    }
+
+    #[getter]
+    fn number(&self) -> usize {
+        self.0.number
+    }
+
+    #[getter]
+    fn total(&self) -> usize {
+        self.0.total
+    }
+
+    /// The percentage value (0.0–100.0).
+    fn calculate(&self) -> f32 {
+        self.0.calculate()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Percentage({}, {})", self.0.number, self.0.total)
+    }
+
+    fn __eq__(&self, other: &Percentage) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Ranks
+// ============================================================
+
+/// An ordered collection of ranks, parseable from a whitespace-separated string.
+///
+/// Examples:
+///     >>> from pkpy import Ranks
+///     >>> r = Ranks.parse("A K Q")
+///     >>> r.count()
+///     3
+#[pyclass(from_py_object, name = "Ranks")]
+#[derive(Clone)]
+pub struct Ranks(PkRanks);
+
+#[pymethods]
+impl Ranks {
+    /// Parse ranks from a whitespace-separated string (e.g. "A K Q J").
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<Self> {
+        PkRanks::from_str(s).map(Ranks).map_err(to_py_err)
+    }
+
+    /// All ranks as a Python list of Rank objects.
+    fn to_list(&self) -> Vec<Rank> {
+        self.0.vec().iter().map(|r| Rank(*r)).collect()
+    }
+
+    /// Number of ranks in this collection.
+    fn count(&self) -> usize {
+        self.0.vec().len()
+    }
+
+    /// The OR-sum of all rank bit flags.
+    fn sum_or(&self) -> u16 {
+        self.0.sum_or()
+    }
+
+    fn __len__(&self) -> usize {
+        self.0.vec().len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Ranks(count={})", self.0.vec().len())
+    }
+}
+
+// ============================================================
+// RangeEquity
+// ============================================================
+
+/// Range-vs-range equity on a given board.
+///
+/// Computes the combined WinLoseDraw across all hero hands against a villain range.
+/// Requires at least the flop to be dealt.
+///
+/// Examples:
+///     >>> from pkpy import RangeEquity, Combos, Board
+///     >>> hero = Combos.parse("QQ+")
+///     >>> villain = Combos.parse("AKs,AKo")
+///     >>> board = Board.parse("As Kh 2d 7c 3c")
+///     >>> re = RangeEquity(hero, villain, board)
+///     >>> odds = re.combined_odds()
+#[pyclass(skip_from_py_object, name = "RangeEquity")]
+pub struct RangeEquity(PkRangeEquity);
+
+#[pymethods]
+impl RangeEquity {
+    /// Create a RangeEquity for hero range vs villain range on a board.
+    #[new]
+    fn new(hero: &Combos, villain: &Combos, board: &Board) -> Self {
+        RangeEquity(PkRangeEquity::new(
+            hero.0.clone(),
+            villain.0.clone(),
+            board.0,
+        ))
+    }
+
+    /// Compute the aggregated WinLoseDraw for hero range vs villain range.
+    /// Raises ValueError if no board is set (preflop not yet supported).
+    fn combined_odds(&self) -> PyResult<WinLoseDraw> {
+        self.0.combined_odds().map(WinLoseDraw).map_err(to_py_err)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "RangeEquity(...)".to_string()
+    }
+}
+
+// ============================================================
+// DealEval
+// ============================================================
+
+/// Preflop (deal) evaluation of all players' win percentages across all runouts.
+///
+/// This is the most computationally intensive evaluation — it enumerates every
+/// possible 5-card board. Use for preflop equity analysis.
+///
+/// Examples:
+///     >>> from pkpy import HoleCards, DealEval
+///     >>> hc = HoleCards.parse("As Ah 2d 2c")
+///     >>> deal = DealEval(hc)
+///     >>> print(deal)
+#[pyclass(skip_from_py_object, name = "DealEval")]
+pub struct DealEval(PkDealEval);
+
+#[pymethods]
+impl DealEval {
+    /// Create a DealEval for the given hole cards, enumerating all runouts.
+    #[new]
+    fn new(hands: &HoleCards) -> Self {
+        DealEval(PkDealEval::new(hands.0.clone()))
+    }
+
+    /// Total number of board runout combinations evaluated.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn HEADSUP_PREFLOP_COMBO_COUNT() -> usize {
+        PkDealEval::HEADSUP_PREFLOP_COMBO_COUNT
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "DealEval(...)".to_string()
+    }
+}
+
+// ============================================================
+// RiverEval
+// ============================================================
+
+/// Hand evaluation at the river stage (complete board).
+///
+/// The board is fully dealt, so there is a single deterministic outcome.
+///
+/// Examples:
+///     >>> from pkpy import HoleCards, Board, Game, RiverEval
+///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
+///     >>> board = Board.parse("9c 6d 5h 5s 8s")
+///     >>> game = Game(hc, board)
+///     >>> river = RiverEval.from_game(game)
+#[pyclass(from_py_object, name = "RiverEval")]
+#[derive(Clone)]
+pub struct RiverEval(PkRiverEval);
+
+#[pymethods]
+impl RiverEval {
+    /// Create a RiverEval from a Game with a complete board. Raises ValueError if river is not dealt.
+    #[staticmethod]
+    fn from_game(game: &Game) -> PyResult<Self> {
+        PkRiverEval::try_from(game.0.clone())
+            .map(RiverEval)
+            .map_err(to_py_err)
+    }
+
+    /// Returns the best-hand Eval for the player at the given index (0-based).
+    /// Raises ValueError if index is out of range.
+    fn rank_for_player(&self, index: usize) -> PyResult<Eval> {
+        self.0.rank_for_player(index).map(Eval).map_err(to_py_err)
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        "RiverEval(...)".to_string()
+    }
+}
+
+// ============================================================
+// BetSize
+// ============================================================
+
+/// A GTO bet size expressed as a fraction of the pot (numerator/denominator).
+///
+/// Examples:
+///     >>> from pkpy import BetSize
+///     >>> b = BetSize.half_pot()
+///     >>> b.as_fraction()
+///     (1, 2)
+///     >>> b.chips(100)
+///     50
+#[pyclass(from_py_object, name = "BetSize")]
+#[derive(Clone)]
+pub struct BetSize(PkBetSize);
+
+#[pymethods]
+impl BetSize {
+    /// Create a BetSize from a fraction. Raises ValueError if denominator is 0.
+    #[staticmethod]
+    fn new(numerator: u32, denominator: u32) -> PyResult<Self> {
+        PkBetSize::new(numerator, denominator)
+            .map(BetSize)
+            .map_err(to_py_err)
+    }
+
+    #[staticmethod]
+    fn third_pot() -> Self {
+        BetSize(PkBetSize::third_pot())
+    }
+
+    #[staticmethod]
+    fn half_pot() -> Self {
+        BetSize(PkBetSize::half_pot())
+    }
+
+    #[staticmethod]
+    fn two_thirds_pot() -> Self {
+        BetSize(PkBetSize::two_thirds_pot())
+    }
+
+    #[staticmethod]
+    fn three_quarters_pot() -> Self {
+        BetSize(PkBetSize::three_quarters_pot())
+    }
+
+    #[staticmethod]
+    fn pot() -> Self {
+        BetSize(PkBetSize::pot())
+    }
+
+    #[staticmethod]
+    fn one_and_half_pot() -> Self {
+        BetSize(PkBetSize::one_and_half_pot())
+    }
+
+    #[staticmethod]
+    fn two_pot() -> Self {
+        BetSize(PkBetSize::two_pot())
+    }
+
+    /// Chip amount for this bet size given the current pot.
+    fn chips(&self, pot: u64) -> u64 {
+        self.0.chips(pot)
+    }
+
+    /// The fraction as a (numerator, denominator) tuple.
+    fn as_fraction(&self) -> (u32, u32) {
+        self.0.as_fraction()
+    }
+
+    fn __repr__(&self) -> String {
+        let (n, d) = self.0.as_fraction();
+        format!("BetSize({}/{})", n, d)
+    }
+}
+
+// ============================================================
+// BetSizings
+// ============================================================
+
+/// Bet sizes available on each street (flop, turn, river).
+///
+/// Examples:
+///     >>> from pkpy import BetSizings, BetSize
+///     >>> bs = BetSizings.uniform([BetSize.half_pot(), BetSize.pot()])
+#[pyclass(skip_from_py_object, name = "BetSizings")]
+#[allow(dead_code)]
+pub struct BetSizings(PkBetSizings);
+
+#[pymethods]
+impl BetSizings {
+    /// Create BetSizings with the same sizes on all streets.
+    #[staticmethod]
+    fn uniform(sizes: Vec<BetSize>) -> Self {
+        BetSizings(PkBetSizings::uniform(
+            sizes.into_iter().map(|b| b.0).collect(),
+        ))
+    }
+
+    /// Create BetSizings with different sizes per street.
+    #[staticmethod]
+    fn new(flop: Vec<BetSize>, turn: Vec<BetSize>, river: Vec<BetSize>) -> Self {
+        BetSizings(PkBetSizings::new(
+            flop.into_iter().map(|b| b.0).collect(),
+            turn.into_iter().map(|b| b.0).collect(),
+            river.into_iter().map(|b| b.0).collect(),
+        ))
+    }
+
+    fn __repr__(&self) -> String {
+        "BetSizings(...)".to_string()
+    }
+}
+
+// ============================================================
+// SolverConfig
+// ============================================================
+
+/// Configuration for the GTO CFR solver.
+///
+/// Examples:
+///     >>> from pkpy import SolverConfig, Combos, Board
+///     >>> hero = Combos.parse("KK+")
+///     >>> villain = Combos.parse("AKs,AKo")
+///     >>> board = Board.parse("2h 3d 4c 5s 6h")
+///     >>> config = SolverConfig(hero, villain, board, 1000, 200)
+#[pyclass(from_py_object, name = "SolverConfig")]
+#[derive(Clone)]
+pub struct SolverConfig(PkSolverConfig);
+
+#[pymethods]
+impl SolverConfig {
+    /// Create a SolverConfig with hero range, villain range, board, effective stack, and pot.
+    #[new]
+    fn new(
+        hero_range: &Combos,
+        villain_range: &Combos,
+        board: &Board,
+        effective_stack: u64,
+        pot: u64,
+    ) -> Self {
+        SolverConfig(PkSolverConfig::new(
+            hero_range.0.clone(),
+            villain_range.0.clone(),
+            board.0,
+            effective_stack,
+            pot,
+        ))
+    }
+
+    fn __repr__(&self) -> String {
+        "SolverConfig(...)".to_string()
+    }
+}
+
+// ============================================================
+// ActionFrequencies
+// ============================================================
+
+/// Action frequency distribution for a GTO strategy node.
+///
+/// Each element is the probability of taking a specific action (0.0–1.0, sums to 1.0).
+#[pyclass(from_py_object, name = "ActionFrequencies")]
+#[derive(Clone)]
+pub struct ActionFrequencies(PkActionFrequencies);
+
+#[pymethods]
+impl ActionFrequencies {
+    /// Number of actions.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    /// True if there are no actions.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Frequency for action at index, or None.
+    fn get(&self, idx: usize) -> Option<f64> {
+        self.0.get(idx)
+    }
+
+    /// All frequencies as a Python list.
+    fn to_list(&self) -> Vec<f64> {
+        self.0.as_slice().to_vec()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("ActionFrequencies(len={})", self.0.len())
+    }
+}
+
+// ============================================================
+// SolverResult
+// ============================================================
+
+/// Output from a completed GTO solve — contains the equilibrium strategy.
+#[pyclass(skip_from_py_object, name = "SolverResult")]
+pub struct SolverResult(pkcore::analysis::gto::solver::SolverResult);
+
+#[pymethods]
+impl SolverResult {
+    /// Number of iterations the solver ran.
+    #[getter]
+    fn iterations(&self) -> usize {
+        self.0.iterations
+    }
+
+    /// Final exploitability (milli-big-blinds per hand).
+    #[getter]
+    fn exploitability(&self) -> f64 {
+        self.0.exploitability
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "SolverResult(iterations={}, exploitability={:.4})",
+            self.0.iterations, self.0.exploitability
+        )
+    }
+}
+
+// ============================================================
+// Solver
+// ============================================================
+
+/// GTO CFR solver for river spots.
+///
+/// Run `iterate()` one or more times and then `solve()` to get the equilibrium.
+///
+/// Examples:
+///     >>> from pkpy import Solver, SolverConfig, Combos, Board
+///     >>> config = SolverConfig(Combos.parse("KK+"), Combos.parse("AKs"), Board.parse("2h 3d 4c 5s 6h"), 1000, 200)
+///     >>> solver = Solver(config)
+///     >>> result = solver.solve()
+///     >>> result.iterations
+#[pyclass(skip_from_py_object, name = "Solver")]
+pub struct Solver(PkSolver);
+
+#[pymethods]
+impl Solver {
+    /// Create a Solver from a SolverConfig.
+    #[new]
+    fn new(config: SolverConfig) -> Self {
+        Solver(PkSolver::new(config.0))
+    }
+
+    /// Run one CFR iteration. Returns the exploitability estimate.
+    fn iterate(&mut self) -> f64 {
+        self.0.iterate()
+    }
+
+    /// Run until convergence or max iterations and return the result.
+    fn solve(&mut self) -> SolverResult {
+        SolverResult(self.0.solve())
+    }
+
+    /// Current iteration count.
+    fn iteration(&self) -> usize {
+        self.0.iteration()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Solver(iteration={})", self.0.iteration())
+    }
+}
+
+// ============================================================
 // Module
 // ============================================================
 
@@ -2982,7 +3612,7 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Player>()?;
     m.add_class::<Seatbit>()?;
     m.add_class::<SeatEquity>()?;
-    m.add_class::<Win>()?;
+    m.add_class::<PotWin>()?;
     m.add_class::<Winnings>()?;
     m.add_class::<TableAction>()?;
     m.add_class::<TableLog>()?;
@@ -3005,6 +3635,19 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Two>()?;
     m.add_class::<Twos>()?;
     m.add_class::<Combos>()?;
+    m.add_class::<PotOdds>()?;
+    m.add_class::<Ev>()?;
+    m.add_class::<Percentage>()?;
+    m.add_class::<Ranks>()?;
+    m.add_class::<RangeEquity>()?;
+    m.add_class::<DealEval>()?;
+    m.add_class::<RiverEval>()?;
+    m.add_class::<BetSize>()?;
+    m.add_class::<BetSizings>()?;
+    m.add_class::<SolverConfig>()?;
+    m.add_class::<ActionFrequencies>()?;
+    m.add_class::<SolverResult>()?;
+    m.add_class::<Solver>()?;
     m.add_function(wrap_pyfunction!(unique_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(distinct_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(unique_2_card_hands, m)?)?;
