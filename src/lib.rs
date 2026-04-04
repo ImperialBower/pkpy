@@ -10,8 +10,11 @@ use pkcore::analysis::gto::vs::Versus as PkVersus;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
 use pkcore::analysis::nubibus::{Pluribus as PkPluribus, PluribusEvent as PkPluribusEvent};
 use pkcore::analysis::outs::Outs as PkOuts;
+use pkcore::analysis::store::bcm::binary_card_map::SevenFiveBCM as PkSevenFiveBCM;
+use pkcore::analysis::store::bcm::index_card_map::IndexCardMap as PkIndexCardMap;
 use pkcore::analysis::store::db::hup::HUPResult as PkHUPResult;
 use pkcore::arrays::two::Two as PkTwo;
+use pkcore::bard::Bard as PkBard;
 use pkcore::card::Card as PkCard;
 use pkcore::cards::Cards as PkCards;
 use pkcore::deck::Deck as PkDeck;
@@ -1925,6 +1928,253 @@ impl Pluribus {
 }
 
 // ============================================================
+// Bard
+// ============================================================
+
+/// A 64-bit bitset where each bit represents one of the 52 playing cards.
+///
+/// `Bard` is the binary card representation used internally for fast set operations
+/// and as the key type for binary card map lookups. Each card occupies exactly one bit,
+/// so operations like union, intersection, and membership test are single CPU instructions.
+///
+/// Examples:
+///     >>> from pkcore import Bard, Card, Cards
+///     >>> b = Bard.from_card(Card.parse("As"))
+///     >>> b.as_u64() > 0
+///     True
+///     >>> b.to_cards()
+///     Cards.parse('A♠')
+///     >>> b2 = Bard.from_cards(Cards.parse("As Ks"))
+///     >>> b2.to_cards()
+///     Cards.parse('A♠ K♠')
+#[pyclass(from_py_object, name = "Bard")]
+#[derive(Clone)]
+pub struct Bard(PkBard);
+
+#[pymethods]
+impl Bard {
+    /// Construct a Bard from a raw u64 value.
+    #[staticmethod]
+    fn from_u64(n: u64) -> Self {
+        Bard(PkBard::from(n))
+    }
+
+    /// Construct a Bard representing a single card.
+    #[staticmethod]
+    fn from_card(card: &Card) -> Self {
+        Bard(PkBard::from(card.0))
+    }
+
+    /// Construct a Bard from a Cards collection (OR of all card bits).
+    #[staticmethod]
+    fn from_cards(cards: &Cards) -> Self {
+        Bard(PkBard::from(cards.0.clone()))
+    }
+
+    /// A Bard with no cards set (value = 0).
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn BLANK() -> Self {
+        Bard(PkBard::BLANK)
+    }
+
+    /// A Bard with all 52 card bits set.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn ALL() -> Self {
+        Bard(PkBard::ALL)
+    }
+
+    /// The raw u64 value of this Bard.
+    fn as_u64(&self) -> u64 {
+        self.0.as_u64()
+    }
+
+    /// Return a new Bard with the given card's bit added.
+    fn fold_in(&self, card: &Card) -> Self {
+        Bard(self.0.fold_in(card.0))
+    }
+
+    /// Convert this Bard back to a Cards collection.
+    fn to_cards(&self) -> Cards {
+        Cards(PkCards::from(self.0))
+    }
+
+    /// A human-readable binary string showing which card bits are set, with a guide line.
+    fn as_guided_string(&self) -> String {
+        self.0.as_guided_string()
+    }
+
+    fn __eq__(&self, other: &Bard) -> bool {
+        self.0 == other.0
+    }
+
+    fn __hash__(&self) -> u64 {
+        self.0.as_u64()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Bard.from_u64({})", self.0.as_u64())
+    }
+}
+
+// ============================================================
+// SevenFiveBCM
+// ============================================================
+
+/// A binary card map entry for a 5- or 7-card hand.
+///
+/// Stores the `Bard` of the full hand (`bc`), the `Bard` of the best 5-card
+/// sub-hand (`best`), and the hand rank value (`rank`). For a 5-card hand,
+/// `bc` and `best` are identical.
+///
+/// `rank` follows the standard Cactus Kev convention: lower is stronger
+/// (1 = royal flush, 7462 = worst high card).
+///
+/// The `generate_csv` method produces the `bcm.csv` data file (~5 GB) consumed
+/// by pkcore's precomputed lookup table. Only call it when you need to regenerate
+/// that file.
+///
+/// Examples:
+///     >>> from pkcore import Cards, SevenFiveBCM
+///     >>> bcm = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs Js Ts"))
+///     >>> bcm.rank
+///     1
+#[pyclass(from_py_object, name = "SevenFiveBCM")]
+#[derive(Clone)]
+pub struct SevenFiveBCM(PkSevenFiveBCM);
+
+#[pymethods]
+impl SevenFiveBCM {
+    /// Build a SevenFiveBCM from a 5- or 7-card Cards collection.
+    /// Raises ValueError for any other count.
+    #[staticmethod]
+    fn from_cards(cards: &Cards) -> PyResult<Self> {
+        let v: Vec<PkCard> = cards.0.to_vec();
+        PkSevenFiveBCM::try_from(v)
+            .map(SevenFiveBCM)
+            .map_err(to_py_err)
+    }
+
+    /// The Bard (bitset) of the full hand (5 or 7 cards).
+    #[getter]
+    fn bc(&self) -> Bard {
+        Bard(self.0.bc)
+    }
+
+    /// The Bard (bitset) of the best 5-card sub-hand.
+    #[getter]
+    fn best(&self) -> Bard {
+        Bard(self.0.best)
+    }
+
+    /// The hand rank value (lower = stronger; 1 = royal flush, 7462 = worst high card).
+    #[getter]
+    fn rank(&self) -> u16 {
+        self.0.rank
+    }
+
+    /// Generate the BCM CSV data file at the given path.
+    /// Enumerates all 5- and 7-card combinations (~5 GB output). This is slow.
+    #[staticmethod]
+    fn generate_csv(path: &str) -> PyResult<()> {
+        PkSevenFiveBCM::generate_csv(path).map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// The default CSV path used when the PKCORE_75BCM_CSV_PATH env var is not set.
+    #[classattr]
+    fn default_csv_path() -> &'static str {
+        PkSevenFiveBCM::DEFAULT_PKCORE_75BCM_CSV_PATH
+    }
+
+    fn __eq__(&self, other: &SevenFiveBCM) -> bool {
+        self.0 == other.0
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "SevenFiveBCM(rank={}, bc={}, best={})",
+            self.0.rank,
+            self.0.bc.as_u64(),
+            self.0.best.as_u64()
+        )
+    }
+}
+
+// ============================================================
+// IndexCardMap
+// ============================================================
+
+/// A human-readable card map entry for a 5- or 7-card hand.
+///
+/// Like `SevenFiveBCM` but stores card hands as display strings rather than
+/// `Bard` bitsets. Useful for CSV output that needs to be human-inspectable.
+///
+/// Examples:
+///     >>> from pkcore import Cards, IndexCardMap
+///     >>> icm = IndexCardMap.from_cards(Cards.parse("As Ks Qs Js Ts"))
+///     >>> icm.rank
+///     1
+///     >>> icm.best
+///     'A♠ K♠ Q♠ J♠ T♠'
+#[pyclass(from_py_object, name = "IndexCardMap")]
+#[derive(Clone)]
+pub struct IndexCardMap(PkIndexCardMap);
+
+#[pymethods]
+impl IndexCardMap {
+    /// Build an IndexCardMap from a 5- or 7-card Cards collection.
+    /// Raises ValueError for any other count.
+    #[staticmethod]
+    fn from_cards(cards: &Cards) -> PyResult<Self> {
+        let v: Vec<PkCard> = cards.0.to_vec();
+        PkIndexCardMap::try_from(v)
+            .map(IndexCardMap)
+            .map_err(to_py_err)
+    }
+
+    /// String representation of the full hand.
+    #[getter]
+    fn cards(&self) -> String {
+        self.0.cards.clone()
+    }
+
+    /// String representation of the best 5-card sub-hand.
+    #[getter]
+    fn best(&self) -> String {
+        self.0.best.clone()
+    }
+
+    /// The hand rank value (lower = stronger; 1 = royal flush, 7462 = worst high card).
+    #[getter]
+    fn rank(&self) -> u16 {
+        self.0.rank
+    }
+
+    /// Generate the index card map CSV data file at the given path.
+    #[staticmethod]
+    fn generate_csv(path: &str) -> PyResult<()> {
+        PkIndexCardMap::generate_csv(path)
+            .map_err(|e: Box<dyn std::error::Error>| PyValueError::new_err(e.to_string()))
+    }
+
+    fn __eq__(&self, other: &IndexCardMap) -> bool {
+        self.0 == other.0
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "IndexCardMap(rank={}, cards='{}', best='{}')",
+            self.0.rank, self.0.cards, self.0.best
+        )
+    }
+}
+
+// ============================================================
 // Deck
 // ============================================================
 
@@ -2013,6 +2263,9 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Card>()?;
     m.add_class::<Cards>()?;
     m.add_class::<Deck>()?;
+    m.add_class::<Bard>()?;
+    m.add_class::<SevenFiveBCM>()?;
+    m.add_class::<IndexCardMap>()?;
     m.add_class::<HoleCards>()?;
     m.add_class::<PluribusEvent>()?;
     m.add_class::<Pluribus>()?;

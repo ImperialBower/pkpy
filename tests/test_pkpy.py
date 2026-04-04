@@ -2,6 +2,7 @@
 
 import pytest
 from pkpy import (
+    Bard,
     Board,
     Card,
     Cards,
@@ -9,10 +10,12 @@ from pkpy import (
     Game,
     HandRankClass,
     HoleCards,
+    IndexCardMap,
     Outs,
     Pluribus,
     PluribusEvent,
     Rank,
+    SevenFiveBCM,
     Suit,
     Two,
     distinct_2_card_hands,
@@ -702,3 +705,179 @@ class TestPluribus:
     def test_str(self):
         hand = Pluribus.parse(LOG)
         assert isinstance(str(hand), str)
+
+
+# ============================================================
+# Bard
+# ============================================================
+
+ROYAL_FLUSH_BARD_U64 = 4_362_862_139_015_168  # A♠ K♠ Q♠ J♠ T♠
+
+
+class TestBard:
+    def test_from_u64_roundtrip(self):
+        b = Bard.from_u64(ROYAL_FLUSH_BARD_U64)
+        assert b.as_u64() == ROYAL_FLUSH_BARD_U64
+
+    def test_from_card(self):
+        b = Bard.from_card(Card.parse("As"))
+        assert b.as_u64() > 0
+
+    def test_from_cards(self):
+        b = Bard.from_cards(Cards.parse("As Ks"))
+        assert b.as_u64() > 0
+
+    def test_blank_is_zero(self):
+        assert Bard.BLANK.as_u64() == 0
+
+    def test_all_has_52_bits(self):
+        b = Bard.ALL
+        assert bin(b.as_u64()).count("1") == 52
+
+    def test_fold_in(self):
+        b = Bard.BLANK
+        b2 = b.fold_in(Card.parse("As"))
+        assert b2.as_u64() > 0
+        assert b.as_u64() == 0  # original unchanged
+
+    def test_to_cards_roundtrip(self):
+        original = Cards.parse("As Ks Qh")
+        b = Bard.from_cards(original)
+        recovered = b.to_cards()
+        assert len(recovered) == 3
+        for card in original.to_list():
+            assert recovered.contains(card)
+
+    def test_single_card_roundtrip(self):
+        card = Card.parse("As")
+        b = Bard.from_card(card)
+        recovered = b.to_cards()
+        assert len(recovered) == 1
+        assert recovered.contains(card)
+
+    def test_equality(self):
+        b1 = Bard.from_cards(Cards.parse("As Ks"))
+        b2 = Bard.from_cards(Cards.parse("As Ks"))
+        assert b1 == b2
+
+    def test_inequality(self):
+        b1 = Bard.from_cards(Cards.parse("As Ks"))
+        b2 = Bard.from_cards(Cards.parse("As Qh"))
+        assert b1 != b2
+
+    def test_as_guided_string(self):
+        b = Bard.from_card(Card.parse("As"))
+        s = b.as_guided_string()
+        assert isinstance(s, str)
+        assert len(s) > 0
+
+    def test_repr(self):
+        b = Bard.from_u64(42)
+        assert "42" in repr(b)
+
+    def test_hash(self):
+        b1 = Bard.from_u64(100)
+        b2 = Bard.from_u64(100)
+        assert hash(b1) == hash(b2)
+
+
+# ============================================================
+# SevenFiveBCM
+# ============================================================
+
+ROYAL_FLUSH_5 = Cards.parse("As Ks Qs Js Ts")
+ROYAL_FLUSH_7 = Cards.parse("As Ks Qs Js Ts 9s 8s")
+
+
+class TestSevenFiveBCM:
+    def test_five_card_rank(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        assert bcm.rank == 1
+
+    def test_seven_card_rank(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_7)
+        assert bcm.rank == 1
+
+    def test_five_card_bc_equals_best(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        assert bcm.bc == bcm.best
+
+    def test_seven_card_bc_differs_from_best(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_7)
+        assert bcm.bc != bcm.best
+
+    def test_seven_best_is_five_cards(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_7)
+        best_cards = bcm.best.to_cards()
+        assert len(best_cards) == 5
+
+    def test_bc_is_bard(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        assert isinstance(bcm.bc, Bard)
+        assert isinstance(bcm.best, Bard)
+
+    def test_invalid_card_count_returns_default(self):
+        # pkcore returns Ok(default) for unsupported counts rather than Err
+        bcm = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs"))
+        assert bcm.rank == 0
+
+    def test_equality(self):
+        bcm1 = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        bcm2 = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        assert bcm1 == bcm2
+
+    def test_default_csv_path(self):
+        assert isinstance(SevenFiveBCM.default_csv_path, str)
+        assert SevenFiveBCM.default_csv_path.endswith(".csv")
+
+    def test_repr(self):
+        bcm = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
+        r = repr(bcm)
+        assert "rank=1" in r
+
+
+# ============================================================
+# IndexCardMap
+# ============================================================
+
+class TestIndexCardMap:
+    def test_five_card_rank(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        assert icm.rank == 1
+
+    def test_seven_card_rank(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_7)
+        assert icm.rank == 1
+
+    def test_five_card_cards_equals_best(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        assert icm.cards == icm.best
+
+    def test_seven_card_cards_differs_from_best(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_7)
+        assert icm.cards != icm.best
+
+    def test_best_contains_five_cards(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_7)
+        best_cards = Cards.parse(icm.best)
+        assert len(best_cards) == 5
+
+    def test_cards_are_strings(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        assert isinstance(icm.cards, str)
+        assert isinstance(icm.best, str)
+
+    def test_invalid_card_count_returns_default(self):
+        # pkcore returns Ok(default) for unsupported counts rather than Err
+        icm = IndexCardMap.from_cards(Cards.parse("As Ks Qs"))
+        assert icm.rank == 0
+
+    def test_equality(self):
+        icm1 = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        icm2 = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        assert icm1 == icm2
+
+    def test_repr(self):
+        icm = IndexCardMap.from_cards(ROYAL_FLUSH_5)
+        r = repr(icm)
+        assert "rank=1" in r

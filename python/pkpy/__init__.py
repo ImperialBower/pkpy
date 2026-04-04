@@ -21,6 +21,7 @@ Basic usage::
 """
 
 from pkpy._pkpy import (
+    Bard,
     Board,
     Card,
     Cards,
@@ -36,11 +37,13 @@ from pkpy._pkpy import (
     HandRankClass,
     HoleCards,
     HUPResult,
+    IndexCardMap,
     Outs,
     Pluribus,
     PluribusEvent,
     Qualifier,
     Rank,
+    SevenFiveBCM,
     Suit,
     TurnEval,
     Two,
@@ -54,6 +57,7 @@ from pkpy._pkpy import (
 )
 
 __all__ = [
+    "Bard",
     "Board",
     "Card",
     "Cards",
@@ -69,11 +73,13 @@ __all__ = [
     "HandRankClass",
     "HoleCards",
     "HUPResult",
+    "IndexCardMap",
     "Outs",
     "Pluribus",
     "PluribusEvent",
     "Qualifier",
     "Rank",
+    "SevenFiveBCM",
     "Suit",
     "TurnEval",
     "Two",
