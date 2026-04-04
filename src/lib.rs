@@ -8,11 +8,13 @@ use pkcore::analysis::gto::odds::WinLoseDraw as PkWinLoseDraw;
 use pkcore::analysis::gto::twos::Twos as PkTwos;
 use pkcore::analysis::gto::vs::Versus as PkVersus;
 use pkcore::analysis::hand_rank::HandRank as PkHandRank;
+use pkcore::analysis::nubibus::{Pluribus as PkPluribus, PluribusEvent as PkPluribusEvent};
 use pkcore::analysis::outs::Outs as PkOuts;
 use pkcore::analysis::store::db::hup::HUPResult as PkHUPResult;
 use pkcore::arrays::two::Two as PkTwo;
 use pkcore::card::Card as PkCard;
 use pkcore::cards::Cards as PkCards;
+use pkcore::deck::Deck as PkDeck;
 use pkcore::play::board::Board as PkBoard;
 use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
@@ -122,6 +124,21 @@ impl Rank {
     /// The integer value of this rank (Ace=14, King=13, ..., Deuce=2, Blank=0).
     fn value(&self) -> u8 {
         self.0 as u8
+    }
+
+    /// The prime number associated with this rank (used in Cactus Kev hand evaluation).
+    fn prime(&self) -> u32 {
+        self.0.prime()
+    }
+
+    /// The bit flag for this rank as used in the Cactus Kev binary card representation.
+    fn bits(&self) -> u32 {
+        self.0.bits()
+    }
+
+    /// The numeric index of this rank (0-based, Deuce=0, Ace=12).
+    fn number(&self) -> u32 {
+        self.0.number()
     }
 
     fn __str__(&self) -> String {
@@ -285,6 +302,21 @@ impl Card {
         self.0.as_u32()
     }
 
+    /// Returns the binary string representation of this card's encoding.
+    fn bit_string(&self) -> String {
+        self.0.bit_string()
+    }
+
+    /// Returns the rank prime number of this card.
+    fn get_rank_prime(&self) -> u32 {
+        self.0.get_rank_prime()
+    }
+
+    /// Returns the letter-index representation of this card (e.g. "As").
+    fn get_letter_index(&self) -> String {
+        self.0.get_letter_index()
+    }
+
     fn __str__(&self) -> String {
         format!("{}", self.0)
     }
@@ -387,6 +419,89 @@ impl Cards {
         self.0.to_vec().into_iter().map(Card).collect()
     }
 
+    /// Returns True if this collection has no cards.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Append another Cards collection to this one (mutates in place).
+    fn append(&mut self, other: &Cards) {
+        self.0.append(&other.0)
+    }
+
+    /// Insert a card. Returns True if the card was not already present.
+    fn insert(&mut self, card: &Card) -> bool {
+        self.0.insert(card.0)
+    }
+
+    /// Remove a card. Returns True if the card was present.
+    fn remove(&mut self, card: &Card) -> bool {
+        self.0.remove(&card.0)
+    }
+
+    /// Return the card at the given index, or None.
+    fn get_index(&self, index: usize) -> Option<Card> {
+        self.0.get_index(index).map(|c| Card(*c))
+    }
+
+    /// Draw `n` cards from the top, returning them as a new Cards. Raises ValueError if not enough cards.
+    fn draw(&mut self, n: usize) -> PyResult<Self> {
+        self.0.draw(n).map(Cards).map_err(to_py_err)
+    }
+
+    /// Draw one card from the top. Raises ValueError if empty.
+    fn draw_one(&mut self) -> PyResult<Card> {
+        self.0.draw_one().map(Card).map_err(to_py_err)
+    }
+
+    /// Draw all remaining cards, leaving this collection empty.
+    fn draw_all(&mut self) -> Self {
+        Cards(self.0.draw_all())
+    }
+
+    /// Return a shuffled copy.
+    fn shuffle(&self) -> Self {
+        Cards(self.0.shuffle())
+    }
+
+    /// Shuffle this collection in place.
+    fn shuffle_in_place(&mut self) {
+        self.0.shuffle_in_place()
+    }
+
+    /// Return a sorted copy (highest rank first).
+    fn sort(&self) -> Self {
+        Cards(self.0.sort())
+    }
+
+    /// Return only cards of the given suit.
+    fn filter_by_suit(&self, suit: &Suit) -> Self {
+        Cards(self.0.filter_by_suit(suit.0))
+    }
+
+    /// Return this collection with the given cards removed.
+    fn minus(&self, other: &Cards) -> Self {
+        Cards(self.0.minus(&other.0))
+    }
+
+    /// Return all k-card combinations as a list of Cards objects.
+    fn combinations(&self, k: usize) -> Vec<Cards> {
+        self.0
+            .combinations(k)
+            .map(|combo| Cards(PkCards::from(combo)))
+            .collect()
+    }
+
+    /// Return all 52 deck cards not in this collection.
+    fn deck_minus(&self) -> Self {
+        Cards(PkCards::deck_minus(&self.0))
+    }
+
+    /// Return a "primed" deck: this collection's cards first, then the rest of the deck.
+    fn deck_primed(&self) -> Self {
+        Cards(PkCards::deck_primed(&self.0))
+    }
+
     fn __iter__(slf: PyRef<'_, Self>) -> PyResult<Py<CardsIterator>> {
         let cards: Vec<Card> = slf.0.to_vec().into_iter().map(Card).collect();
         let iter = CardsIterator {
@@ -454,6 +569,26 @@ impl HoleCards {
     /// Returns the number of players (two-card hands) in this collection.
     fn __len__(&self) -> usize {
         self.0.len()
+    }
+
+    /// Returns True if this collection has no hole cards.
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns the Two at the given index (0-based), or None.
+    fn get(&self, index: usize) -> Option<Two> {
+        self.0.get(index).map(|t| Two(t.clone()))
+    }
+
+    /// Append a two-card hand to this collection.
+    fn push(&mut self, two: &Two) {
+        self.0.push(two.0.clone())
+    }
+
+    /// Returns all hole card hands as a Python list of Two objects.
+    fn to_list(&self) -> Vec<Two> {
+        self.0.iter().map(|t| Two(t.clone())).collect()
     }
 
     fn __str__(&self) -> String {
@@ -831,6 +966,32 @@ impl Game {
     /// Returns an empty string if the board does not have a turn card.
     fn turn_nuts_display(&self) -> String {
         format!("{}", self.0.turn_the_nuts().to_evals())
+    }
+
+    /// True if the board has a turn card dealt.
+    fn has_dealt_turn(&self) -> bool {
+        self.0.has_dealt_turn()
+    }
+
+    /// Returns the best-hand Eval for a specific player at the turn (0-indexed).
+    /// Raises ValueError if the board has no turn card or the index is out of range.
+    fn turn_eval_for_player(&self, index: usize) -> PyResult<Eval> {
+        self.0
+            .turn_eval_for_player(index)
+            .map(Eval)
+            .map_err(to_py_err)
+    }
+
+    /// Returns the remaining deck cards (cards not on the board or in any hand) at the turn.
+    fn turn_remaining_board(&self) -> Cards {
+        Cards(self.0.turn_remaining_board())
+    }
+
+    /// Returns the flop and turn cards (4 cards) as a Cards collection.
+    /// Returns an empty Cards if the board does not have a turn card.
+    fn flop_and_turn(&self) -> Cards {
+        let four = self.0.flop_and_turn();
+        Cards(PkCards::from(four.to_arr()))
     }
 
     /// Returns the formatted river result string showing each player's final
@@ -1603,6 +1764,217 @@ impl Versus {
 }
 
 // ============================================================
+// PluribusEvent
+// ============================================================
+
+/// A single action in a Pluribus hand log: Fold, Call, or Raise(amount).
+///
+/// Examples:
+///     >>> from pkcore import Pluribus
+///     >>> hand = Pluribus.parse("STATE:0:ffr225fff:3c9s|6d5s|9dTs|2sQs|AdKd|7cTc:-50|-100|0|0|150|0:MrWhite|Gogo|Budd|Eddie|Bill|Pluribus")
+///     >>> for event in hand.actions():
+///     ...     print(event)
+#[pyclass(from_py_object, name = "PluribusEvent")]
+#[derive(Clone)]
+pub struct PluribusEvent(PkPluribusEvent);
+
+#[pymethods]
+impl PluribusEvent {
+    /// True if this event is a fold.
+    fn is_fold(&self) -> bool {
+        self.0.is_fold()
+    }
+
+    /// True if this event is a call.
+    fn is_call(&self) -> bool {
+        self.0.is_call()
+    }
+
+    /// True if this event is a raise.
+    fn is_raise(&self) -> bool {
+        self.0.is_raise()
+    }
+
+    /// The raise amount, or None if this is not a raise.
+    fn raise_amount(&self) -> Option<usize> {
+        self.0.raise_amount()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PluribusEvent('{}')", self.0)
+    }
+
+    fn __eq__(&self, other: &PluribusEvent) -> bool {
+        self.0 == other.0
+    }
+}
+
+// ============================================================
+// Pluribus
+// ============================================================
+
+/// A single hand record from a Pluribus AI poker log.
+///
+/// Pluribus logs use the format:
+///   `STATE:{index}:{rounds}:{cards}:{winnings}:{players}`
+///
+/// Cards are pipe-separated two-card hands, optionally followed by `/board`.
+/// Rounds are slash-separated action strings where `f`=fold, `c`=call, `r{n}`=raise.
+///
+/// Examples:
+///     >>> from pkcore import Pluribus
+///     >>> log = "STATE:27:r200ffcfc/cr850cf:Qc4h|Tc9c|8sAs/3h7s5c:-50|-200|250:Alice|Bob|Pluribus"
+///     >>> hand = Pluribus.parse(log)
+///     >>> hand.index
+///     27
+///     >>> hand.players
+///     ['Alice', 'Bob', 'Pluribus']
+///     >>> hand.board
+///     Board.parse('3♥ 7♠ 5♣')
+#[pyclass(from_py_object, name = "Pluribus")]
+#[derive(Clone)]
+pub struct Pluribus(PkPluribus);
+
+#[pymethods]
+impl Pluribus {
+    /// Parse a single Pluribus log line.
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<Self> {
+        s.parse::<PkPluribus>().map(Pluribus).map_err(to_py_err)
+    }
+
+    /// Parse all valid Pluribus hands from a log file. Invalid lines are skipped.
+    #[staticmethod]
+    fn read_log(filename: &str) -> PyResult<Vec<Pluribus>> {
+        PkPluribus::read_in_log(filename)
+            .map(|v| v.into_iter().map(Pluribus).collect())
+            .map_err(to_py_err)
+    }
+
+    /// The hand index number from the log.
+    #[getter]
+    fn index(&self) -> usize {
+        self.0.index
+    }
+
+    /// The raw log line this hand was parsed from.
+    #[getter]
+    fn raw(&self) -> String {
+        self.0.raw.clone()
+    }
+
+    /// The hole cards dealt to each player.
+    #[getter]
+    fn hole_cards(&self) -> HoleCards {
+        HoleCards(self.0.hole_cards.clone())
+    }
+
+    /// The community board cards (may be empty for preflop-only hands).
+    #[getter]
+    fn board(&self) -> Board {
+        Board(self.0.board)
+    }
+
+    /// The winnings/losses for each player (positive = won, negative = lost).
+    #[getter]
+    fn winnings(&self) -> Vec<isize> {
+        self.0.winnings.clone()
+    }
+
+    /// The player names in seat order.
+    #[getter]
+    fn players(&self) -> Vec<String> {
+        self.0.players.clone()
+    }
+
+    /// The raw round strings (e.g. `["r200ffcfc", "cr850cf"]`).
+    fn rounds(&self) -> Vec<String> {
+        self.0.rounds.clone()
+    }
+
+    /// All actions across all rounds as a flat list of PluribusEvent objects.
+    fn actions(&self) -> Vec<PluribusEvent> {
+        self.0.actions.iter().map(|e| PluribusEvent(*e)).collect()
+    }
+
+    /// The actions for a specific round (0-indexed). Returns an empty list for invalid indices.
+    fn actions_for_round(&self, round_index: usize) -> Vec<PluribusEvent> {
+        self.0
+            .parse_round_at(round_index)
+            .into_iter()
+            .map(PluribusEvent)
+            .collect()
+    }
+
+    /// A formatted string showing each player's winnings/losses.
+    fn display_results(&self) -> String {
+        self.0.display_results()
+    }
+
+    fn __str__(&self) -> String {
+        format!("{}", self.0)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Pluribus.parse('{}')", self.0.raw)
+    }
+}
+
+// ============================================================
+// Deck
+// ============================================================
+
+/// A standard 52-card deck.
+///
+/// All methods are static — `Deck` is a namespace for deck-level operations.
+///
+/// Examples:
+///     >>> from pkcore import Deck
+///     >>> deck = Deck.poker_cards()
+///     >>> len(deck)
+///     52
+///     >>> shuffled = Deck.poker_cards_shuffled()
+///     >>> Deck.len()
+///     52
+#[pyclass(name = "Deck")]
+pub struct Deck;
+
+#[pymethods]
+impl Deck {
+    /// Returns a full 52-card ordered deck as a Cards collection.
+    #[staticmethod]
+    fn poker_cards() -> Cards {
+        Cards(PkDeck::poker_cards())
+    }
+
+    /// Returns a full 52-card deck in random order.
+    #[staticmethod]
+    fn poker_cards_shuffled() -> Cards {
+        Cards(PkDeck::poker_cards_shuffled())
+    }
+
+    /// Returns the card at the given index (0–51) in deck order.
+    #[staticmethod]
+    fn get(index: usize) -> Card {
+        Card(PkDeck::get(index))
+    }
+
+    /// Returns the number of cards in a standard deck (always 52).
+    #[staticmethod]
+    fn len() -> usize {
+        PkDeck::len()
+    }
+
+    fn __repr__(&self) -> String {
+        "Deck".to_string()
+    }
+}
+
+// ============================================================
 // Constants
 // ============================================================
 
@@ -1640,7 +2012,10 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Suit>()?;
     m.add_class::<Card>()?;
     m.add_class::<Cards>()?;
+    m.add_class::<Deck>()?;
     m.add_class::<HoleCards>()?;
+    m.add_class::<PluribusEvent>()?;
+    m.add_class::<Pluribus>()?;
     m.add_class::<Board>()?;
     m.add_class::<HandRankClass>()?;
     m.add_class::<HandRank>()?;

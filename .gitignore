@@ -7,3 +7,4 @@ dist/
 *.pyc
 *.dylib
 *.dylib.dSYM/
+Cargo.lock

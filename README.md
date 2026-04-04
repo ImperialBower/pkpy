@@ -88,13 +88,29 @@ king_hearts = Card.parse("K♥")
 card = Card.from_rank_suit(Rank.QUEEN, Suit.DIAMONDS)
 
 # Inspect
-card.rank()       # -> Rank
-card.suit()       # -> Suit
-card.is_dealt()   # -> bool (False for blank/sentinel cards)
-card.as_u32()     # -> int (raw Cactus Kev encoding)
+card.rank()              # -> Rank
+card.suit()              # -> Suit
+card.is_dealt()          # -> bool (False for blank/sentinel cards)
+card.as_u32()            # -> int (raw Cactus Kev encoding)
+card.bit_string()        # -> str (binary representation of the encoding)
+card.get_rank_prime()    # -> int (rank prime used in hand evaluation)
+card.get_letter_index()  # -> str (letter-index form, e.g. "As")
 
-str(card)         # -> "Q♦"
-card == Card.parse("Qd")  # -> True
+str(card)                # -> "Q♦"
+card == Card.parse("Qd") # -> True
+```
+
+### `Deck`
+
+A standard 52-card deck. All methods are static — `Deck` is a namespace for deck-level operations.
+
+```python
+from pkpy import Deck
+
+deck = Deck.poker_cards()           # -> Cards, ordered A♠ down to 2♣
+shuffled = Deck.poker_cards_shuffled()  # -> Cards, randomly shuffled
+Deck.get(0)                         # -> Card (A♠, the first card in deck order)
+Deck.len()                          # -> 52
 ```
 
 ### `Cards`
@@ -105,19 +121,43 @@ An ordered, unique collection of cards backed by an `IndexSet` (ordered hash set
 from pkpy import Cards
 
 hand = Cards.parse("As Ks Qh")
-deck = Cards.deck()           # full 52-card deck
+deck = Cards.deck()           # full 52-card deck in order
 
-len(hand)                     # -> 3
-hand.contains(Card.parse("As")) # -> True
-hand.remaining()              # -> Cards with 49 cards (deck minus hand)
-hand.remaining_after(board)   # -> deck minus hand minus board
+len(hand)                         # -> 3
+hand.is_empty()                   # -> False
+hand.contains(Card.parse("As"))   # -> True
+hand.remaining()                  # -> Cards with 49 cards (deck minus hand)
+hand.remaining_after(board)       # -> deck minus hand minus board
+hand.is_dealt()                   # -> True if no blank cards
+hand.are_unique()                 # -> True if no duplicates
 
-for card in hand:             # iterable
+for card in hand:                 # iterable
     print(card)
 
-hand.to_list()                # -> list[Card]
-hand.is_dealt()               # -> True if no blank cards
-hand.are_unique()             # -> True if no duplicates
+hand.to_list()                    # -> list[Card]
+hand.get_index(0)                 # -> Card | None (card at position 0)
+
+# Mutation
+hand.insert(Card.parse("Jh"))     # -> bool (True if card was new)
+hand.remove(Card.parse("As"))     # -> bool (True if card was present)
+hand.append(Cards.parse("Tc 9c")) # merge another Cards in place
+hand.shuffle_in_place()           # shuffle in place
+
+# Non-mutating transformations
+hand.shuffle()                    # -> Cards (shuffled copy)
+hand.sort()                       # -> Cards (sorted highest rank first)
+hand.minus(other)                 # -> Cards (this minus other)
+hand.filter_by_suit(Suit.SPADES)  # -> Cards (only spades)
+hand.combinations(2)              # -> list[Cards] (all 2-card combos)
+
+# Drawing (mutates the source collection)
+card = hand.draw_one()            # -> Card (removes and returns the top card)
+drawn = hand.draw(3)              # -> Cards (removes and returns 3 cards)
+rest = hand.draw_all()            # -> Cards (empties the collection)
+
+# Deck-relative operations
+hand.deck_minus()                 # -> Cards (52-card deck minus this collection)
+hand.deck_primed()                # -> Cards (this collection first, then rest of deck)
 ```
 
 ### `HoleCards`
@@ -129,11 +169,15 @@ from pkpy import HoleCards
 
 # Two players
 hc = HoleCards.parse("As Kh 8d Kc")
-len(hc)  # -> 2
+len(hc)        # -> 2
+hc.is_empty()  # -> False
+hc.get(0)      # -> Two | None (0-indexed)
+hc.to_list()   # -> list[Two]
 
-# One player
+# Build programmatically
 hc = HoleCards.parse("As Kh")
-len(hc)  # -> 1
+hc.push(Two.parse("Qd Jc"))
+len(hc)  # -> 2
 ```
 
 ### `Board`
@@ -161,7 +205,17 @@ hc    = HoleCards.parse("As Kh 8d Kc")
 board = Board.parse("Ac 8h 7h 9s")
 game  = Game(hc, board)
 
-case_evals = game.turn_case_evals()  # evaluates all possible river cards
+game.has_dealt_turn()          # -> bool (True if board has a turn card)
+case_evals = game.turn_case_evals()          # evaluates all possible river cards
+game.turn_eval_for_player(0)   # -> Eval for player at index 0 (raises on missing turn)
+game.turn_remaining_board()    # -> Cards (deck cards not yet on the board or in hands)
+game.flop_and_turn()           # -> Cards (the 4 board cards through the turn)
+
+flop_eval = game.flop_eval()   # -> FlopEval | None
+turn_eval = game.turn_eval()   # -> TurnEval | None
+
+print(game.turn_nuts_display())  # best hands possible at the turn
+print(game.river_display())      # final result with winner
 ```
 
 ### `CaseEvals`
@@ -342,6 +396,89 @@ print(f"Offsuit: {len(twos.filter_is_not_suited())}")
 
 ---
 
+## Pluribus Log Parsing
+
+pkpy can parse hand histories from the [Pluribus](https://en.wikipedia.org/wiki/Pluribus_(poker_bot)) AI poker logs. Each line in a log file is a `STATE` record encoding one hand.
+
+### Log format
+
+```
+STATE:{index}:{rounds}:{cards}:{winnings}:{players}
+```
+
+- **rounds** — slash-separated betting round strings, e.g. `r200ffcfc/cr850cf`. Each character is `f` (fold), `c` (call), or `r{n}` (raise to n).
+- **cards** — pipe-separated two-card hands, optionally followed by `/board`, e.g. `Qc4h|Tc9c|5h5d/3h7s5c/Qs/6c`.
+- **winnings** — pipe-separated signed integers, one per player.
+- **players** — pipe-separated player names.
+
+### `PluribusEvent`
+
+A single action: fold, call, or raise.
+
+```python
+from pkpy import Pluribus
+
+hand = Pluribus.parse("STATE:0:ffr225fff:3c9s|6d5s|9dTs|2sQs|AdKd|7cTc:-50|-100|0|0|150|0:MrWhite|Gogo|Budd|Eddie|Bill|Pluribus")
+
+for event in hand.actions():
+    print(event)              # "Fold", "Call", "Raise(225)", etc.
+    event.is_fold()           # -> bool
+    event.is_call()           # -> bool
+    event.is_raise()          # -> bool
+    event.raise_amount()      # -> int | None
+```
+
+### `Pluribus`
+
+A parsed hand record.
+
+```python
+from pkpy import Pluribus
+
+# Parse a single log line
+hand = Pluribus.parse("STATE:27:r200ffcfc/cr850cf/cr1825r3775c/r10000c:Qc4h|Tc9c|8sAs|Qh7c|JcQd|5h5d/3h7s5c/Qs/6c:-50|-200|-10000|0|0|10250:Eddie|Bill|Pluribus|MrWhite|Gogo|Budd")
+
+hand.index           # -> 27
+hand.players         # -> ['Eddie', 'Bill', 'Pluribus', 'MrWhite', 'Gogo', 'Budd']
+hand.winnings        # -> [-50, -200, -10000, 0, 0, 10250]
+hand.hole_cards      # -> HoleCards (6 players' hands)
+hand.board           # -> Board (3h 7s 5c Qs 6c)
+hand.raw             # -> the original log line string
+
+hand.rounds()                 # -> list[str]  raw round strings
+hand.actions()                # -> list[PluribusEvent]  all actions flat
+hand.actions_for_round(0)     # -> list[PluribusEvent]  actions in round 0
+hand.display_results()        # -> str  formatted winnings summary
+
+# Parse an entire log file — invalid lines are silently skipped
+hands = Pluribus.read_log("/path/to/pluribus.log")
+print(f"Loaded {len(hands)} hands")
+```
+
+### Pluribus example
+
+```python
+from pkpy import Pluribus
+
+LOG_LINE = "STATE:27:r200ffcfc/cr850cf/cr1825r3775c/r10000c:Qc4h|Tc9c|8sAs|Qh7c|JcQd|5h5d/3h7s5c/Qs/6c:-50|-200|-10000|0|0|10250:Eddie|Bill|Pluribus|MrWhite|Gogo|Budd"
+
+hand = Pluribus.parse(LOG_LINE)
+
+print(f"Hand #{hand.index}")
+print(f"Players: {', '.join(hand.players)}")
+print(f"Board: {hand.board}")
+print(f"Hole cards dealt: {len(hand.hole_cards)} players")
+
+raises = [e for e in hand.actions() if e.is_raise()]
+print(f"Raises this hand: {len(raises)}")
+for r in raises:
+    print(f"  {r.raise_amount()}")
+
+print(hand.display_results())
+```
+
+---
+
 ## Complete Example
 
 ```python
@@ -408,9 +545,10 @@ python3 -m maturin publish
 
 ## Relationship to pkcore
 
-This project wraps pkcore as a versioned crates.io dependency. The wrapper intentionally exposes a
-subset of pkcore's API — the analysis-focused surface that's most useful from Python. Lower-level
-types (binary card maps, SQLite storage, Pluribus log parsing) are not yet exposed.
+This project wraps pkcore as a versioned crates.io dependency. The wrapper exposes the
+analysis-focused surface most useful from Python: card/deck primitives, hand evaluation, outs
+calculation, GTO range analysis, heads-up equity, and Pluribus log parsing. Lower-level types
+(binary card maps, SQLite storage, casino table simulation) are not exposed.
 
 ---
 
