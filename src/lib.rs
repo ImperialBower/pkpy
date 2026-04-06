@@ -35,6 +35,11 @@ use pkcore::casino::table::seats::seat_equity::SeatEquity as PkSeatEquity;
 use pkcore::casino::table::seats::seatbit::Seatbit as PkSeatbit;
 use pkcore::casino::table::winnings::{PotWin as PkPotWin, Winnings as PkWinnings};
 use pkcore::deck::Deck as PkDeck;
+use pkcore::games::kuhn::{
+    KuhnAction as PkKuhnAction, KuhnCard as PkKuhnCard, KuhnCfr as PkKuhnCfr,
+    KuhnHistory as PkKuhnHistory, KuhnInfoSet as PkKuhnInfoSet, KuhnState as PkKuhnState,
+    KuhnStrategy as PkKuhnStrategy,
+};
 use pkcore::play::board::Board as PkBoard;
 use pkcore::play::game::Game as PkGame;
 use pkcore::play::hole_cards::HoleCards as PkHoleCards;
@@ -3590,6 +3595,378 @@ impl Solver {
 }
 
 // ============================================================
+// Kuhn Poker
+// ============================================================
+
+/// One of the three cards in Kuhn poker's minimal deck: Jack < Queen < King.
+///
+/// Use the class attributes ``KuhnCard.JACK``, ``KuhnCard.QUEEN``, and
+/// ``KuhnCard.KING`` to obtain instances.
+#[pyclass(from_py_object, name = "KuhnCard")]
+#[derive(Clone)]
+pub struct KuhnCard(PkKuhnCard);
+
+#[pymethods]
+impl KuhnCard {
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn JACK() -> Self {
+        KuhnCard(PkKuhnCard::Jack)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn QUEEN() -> Self {
+        KuhnCard(PkKuhnCard::Queen)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn KING() -> Self {
+        KuhnCard(PkKuhnCard::King)
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+    fn __repr__(&self) -> String {
+        format!("KuhnCard.{:?}", self.0)
+    }
+    fn __eq__(&self, other: &KuhnCard) -> bool {
+        self.0 == other.0
+    }
+    fn __hash__(&self) -> u8 {
+        self.0 as u8
+    }
+    fn __lt__(&self, other: &KuhnCard) -> bool {
+        self.0 < other.0
+    }
+    fn __le__(&self, other: &KuhnCard) -> bool {
+        self.0 <= other.0
+    }
+    fn __gt__(&self, other: &KuhnCard) -> bool {
+        self.0 > other.0
+    }
+    fn __ge__(&self, other: &KuhnCard) -> bool {
+        self.0 >= other.0
+    }
+}
+
+/// An action a player can take in Kuhn poker: Check, Bet, Call, or Fold.
+///
+/// Use the class attributes ``KuhnAction.CHECK``, ``KuhnAction.BET``,
+/// ``KuhnAction.CALL``, and ``KuhnAction.FOLD``.
+#[pyclass(name = "KuhnAction")]
+#[derive(Clone)]
+pub struct KuhnAction(PkKuhnAction);
+
+#[pymethods]
+impl KuhnAction {
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn CHECK() -> Self {
+        KuhnAction(PkKuhnAction::Check)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn BET() -> Self {
+        KuhnAction(PkKuhnAction::Bet)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn CALL() -> Self {
+        KuhnAction(PkKuhnAction::Call)
+    }
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn FOLD() -> Self {
+        KuhnAction(PkKuhnAction::Fold)
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+    fn __repr__(&self) -> String {
+        format!("KuhnAction.{:?}", self.0)
+    }
+    fn __eq__(&self, other: &KuhnAction) -> bool {
+        self.0 == other.0
+    }
+    fn __hash__(&self) -> u8 {
+        match self.0 {
+            PkKuhnAction::Check => 0,
+            PkKuhnAction::Bet => 1,
+            PkKuhnAction::Call => 2,
+            PkKuhnAction::Fold => 3,
+        }
+    }
+}
+
+/// The immutable sequence of actions taken so far in a Kuhn hand.
+///
+/// ``KuhnHistory`` is a value type: ``push`` returns a new history with the
+/// action appended, leaving the original unchanged.
+#[pyclass(name = "KuhnHistory")]
+#[derive(Clone)]
+pub struct KuhnHistory(PkKuhnHistory);
+
+#[pymethods]
+impl KuhnHistory {
+    #[new]
+    fn new() -> Self {
+        KuhnHistory(PkKuhnHistory::new())
+    }
+
+    /// Returns a new history with the given action appended.
+    fn push(&self, action: &KuhnAction) -> Self {
+        KuhnHistory(self.0.push(action.0))
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The most recent action, or ``None`` if the history is empty.
+    fn last(&self) -> Option<KuhnAction> {
+        self.0.last().map(KuhnAction)
+    }
+
+    /// All actions as a list, in order.
+    fn actions(&self) -> Vec<KuhnAction> {
+        self.0.as_slice().iter().map(|&a| KuhnAction(a)).collect()
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+    fn __repr__(&self) -> String {
+        format!("KuhnHistory({})", self.0)
+    }
+    fn __eq__(&self, other: &KuhnHistory) -> bool {
+        self.0 == other.0
+    }
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.hash(&mut h);
+        h.finish()
+    }
+}
+
+/// The information visible to one player: their hole card plus the betting history.
+///
+/// Info sets are the keys used by strategy tables — a strategy maps each info set
+/// to a probability distribution over legal actions.
+#[pyclass(name = "KuhnInfoSet")]
+#[derive(Clone)]
+pub struct KuhnInfoSet(PkKuhnInfoSet);
+
+#[pymethods]
+impl KuhnInfoSet {
+    #[new]
+    fn new(card: &KuhnCard, history: &KuhnHistory) -> Self {
+        KuhnInfoSet(PkKuhnInfoSet::new(card.0, history.0.clone()))
+    }
+
+    #[getter]
+    fn card(&self) -> KuhnCard {
+        KuhnCard(self.0.card)
+    }
+    #[getter]
+    fn history(&self) -> KuhnHistory {
+        KuhnHistory(self.0.history.clone())
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+    fn __repr__(&self) -> String {
+        format!("KuhnInfoSet({})", self.0)
+    }
+    fn __eq__(&self, other: &KuhnInfoSet) -> bool {
+        self.0 == other.0
+    }
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.hash(&mut h);
+        h.finish()
+    }
+}
+
+/// The complete, immutable game state for a Kuhn poker hand.
+///
+/// ``KuhnState`` is a pure value type: ``apply`` returns a new state rather
+/// than mutating in place.
+///
+/// Example::
+///
+///     state = KuhnState(KuhnCard.JACK, KuhnCard.KING)
+///     terminal = state.apply(KuhnAction.BET).apply(KuhnAction.CALL)
+///     assert terminal.is_terminal()
+///     assert terminal.payoff() == [-2, 2]  # King beats Jack
+#[pyclass(name = "KuhnState")]
+#[derive(Clone)]
+pub struct KuhnState(PkKuhnState);
+
+#[pymethods]
+impl KuhnState {
+    #[new]
+    fn new(card_p0: &KuhnCard, card_p1: &KuhnCard) -> PyResult<Self> {
+        PkKuhnState::new(card_p0.0, card_p1.0)
+            .map(KuhnState)
+            .map_err(to_py_err)
+    }
+
+    /// The hole card dealt to the given player (0 or 1).
+    fn card(&self, player: usize) -> KuhnCard {
+        KuhnCard(self.0.card(player))
+    }
+
+    /// The current betting history.
+    fn history(&self) -> KuhnHistory {
+        KuhnHistory(self.0.history().clone())
+    }
+
+    /// ``True`` if the hand is over and no further actions are possible.
+    fn is_terminal(&self) -> bool {
+        self.0.is_terminal()
+    }
+
+    /// Index of the player who must act next, or ``None`` at terminal nodes.
+    fn current_player(&self) -> Option<usize> {
+        self.0.current_player()
+    }
+
+    /// Legal actions available to the current player (empty list at terminal nodes).
+    fn legal_actions(&self) -> Vec<KuhnAction> {
+        self.0.legal_actions().into_iter().map(KuhnAction).collect()
+    }
+
+    /// Apply an action and return the resulting game state.
+    ///
+    /// Raises ``ValueError`` if the action is not legal in the current state.
+    fn apply(&self, action: &KuhnAction) -> PyResult<KuhnState> {
+        self.0.apply(action.0).map(KuhnState).map_err(to_py_err)
+    }
+
+    /// Net chip payoff ``[player_0, player_1]`` at a terminal node.
+    ///
+    /// Raises ``ValueError`` if called on a non-terminal state.
+    fn payoff(&self) -> PyResult<Vec<i32>> {
+        self.0.payoff().map(|p| p.to_vec()).map_err(to_py_err)
+    }
+
+    /// The information set visible to the given player in the current state.
+    fn info_set(&self, player: usize) -> KuhnInfoSet {
+        KuhnInfoSet(self.0.info_set(player))
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+    fn __repr__(&self) -> String {
+        format!("KuhnState({})", self.0)
+    }
+    fn __eq__(&self, other: &KuhnState) -> bool {
+        self.0 == other.0
+    }
+}
+
+/// A strategy for Kuhn poker: a mapping from info sets to action probabilities.
+///
+/// Use ``KuhnStrategy.gto(alpha)`` for the analytical Nash equilibrium, or
+/// ``KuhnStrategy.default()`` for the maximum-bluff-frequency GTO (alpha=1/3).
+#[pyclass(from_py_object, name = "KuhnStrategy")]
+#[derive(Clone)]
+pub struct KuhnStrategy(PkKuhnStrategy);
+
+#[pymethods]
+impl KuhnStrategy {
+    /// Builds the analytical Nash equilibrium parameterized by ``alpha ∈ [0, 1/3]``.
+    ///
+    /// ``alpha`` controls Player 0's bluffing frequency with a Jack.
+    /// Raises ``ValueError`` if alpha is outside ``[0, 1/3]``.
+    #[staticmethod]
+    fn gto(alpha: f64) -> PyResult<Self> {
+        PkKuhnStrategy::gto(alpha)
+            .map(KuhnStrategy)
+            .map_err(to_py_err)
+    }
+
+    /// Returns the GTO strategy with ``alpha = 1/3`` (maximum bluff frequency).
+    #[staticmethod]
+    #[allow(clippy::should_implement_trait)]
+    fn default() -> Self {
+        KuhnStrategy(PkKuhnStrategy::default())
+    }
+
+    /// Probability distribution over legal actions for the given info set.
+    ///
+    /// Returns a list of ``(KuhnAction, probability)`` tuples. Probabilities sum
+    /// to 1.0. Returns an empty list for terminal or unknown info sets.
+    fn action_probs(&self, info_set: &KuhnInfoSet) -> Vec<(KuhnAction, f64)> {
+        self.0
+            .action_probs(&info_set.0)
+            .iter()
+            .map(|&(a, p)| (KuhnAction(a), p))
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        "KuhnStrategy(...)".to_string()
+    }
+}
+
+/// Vanilla CFR trainer for Kuhn poker.
+///
+/// Implements counterfactual regret minimization over the full Kuhn game tree.
+/// After enough iterations, ``average_strategy`` converges to Nash equilibrium
+/// and ``exploitability`` approaches zero.
+///
+/// Example::
+///
+///     cfr = KuhnCfr()
+///     cfr.train(10_000)
+///     print(cfr.exploitability())   # → near 0
+///     strategy = cfr.average_strategy()
+#[pyclass(name = "KuhnCfr")]
+pub struct KuhnCfr(PkKuhnCfr);
+
+#[pymethods]
+impl KuhnCfr {
+    #[new]
+    fn new() -> Self {
+        KuhnCfr(PkKuhnCfr::new())
+    }
+
+    /// Run ``iterations`` of vanilla CFR (traverses all 6 deals each iteration).
+    ///
+    /// Calling ``train`` multiple times accumulates on top of prior training.
+    fn train(&mut self, iterations: u32) {
+        self.0.train(iterations);
+    }
+
+    /// Average strategy accumulated over all training iterations.
+    ///
+    /// Converges to Nash equilibrium as iterations increase.
+    fn average_strategy(&self) -> KuhnStrategy {
+        KuhnStrategy(self.0.average_strategy())
+    }
+
+    /// Exploitability of the current average strategy (0.0 at Nash equilibrium).
+    fn exploitability(&self) -> f64 {
+        self.0.exploitability()
+    }
+
+    fn __repr__(&self) -> String {
+        "KuhnCfr(...)".to_string()
+    }
+}
+
+// ============================================================
 // Module
 // ============================================================
 
@@ -3648,6 +4025,13 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ActionFrequencies>()?;
     m.add_class::<SolverResult>()?;
     m.add_class::<Solver>()?;
+    m.add_class::<KuhnCard>()?;
+    m.add_class::<KuhnAction>()?;
+    m.add_class::<KuhnHistory>()?;
+    m.add_class::<KuhnInfoSet>()?;
+    m.add_class::<KuhnState>()?;
+    m.add_class::<KuhnStrategy>()?;
+    m.add_class::<KuhnCfr>()?;
     m.add_function(wrap_pyfunction!(unique_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(distinct_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(unique_2_card_hands, m)?)?;

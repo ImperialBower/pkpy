@@ -21,6 +21,13 @@ Basic usage::
 """
 
 from pkpy._pkpy import (
+    KuhnCard,
+    KuhnAction,
+    KuhnHistory,
+    KuhnInfoSet,
+    KuhnState,
+    KuhnStrategy,
+    KuhnCfr,
     Bard,
     Board,
     Card,
@@ -68,6 +75,13 @@ from pkpy._pkpy import (
 )
 
 __all__ = [
+    "KuhnCard",
+    "KuhnAction",
+    "KuhnHistory",
+    "KuhnInfoSet",
+    "KuhnState",
+    "KuhnStrategy",
+    "KuhnCfr",
     "Bard",
     "Board",
     "Card",
