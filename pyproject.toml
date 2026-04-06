@@ -6,14 +6,24 @@ build-backend = "maturin"
 name = "pkpy"
 version = "0.1.0"
 description = "Python bindings for pkcore, a high-performance poker analysis library"
+readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.8"
+authors = [
+    { name = "folkengine", email = "gaoler@electronicpanopticon.com"},
+]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Games/Entertainment",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ImperialBower/pkpy"
+Repository = "https://github.com/ImperialBower/pkpy"
+"Bug Tracker" = "https://github.com/ImperialBower/pkpy/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
