@@ -3654,7 +3654,7 @@ impl KuhnCard {
 ///
 /// Use the class attributes ``KuhnAction.CHECK``, ``KuhnAction.BET``,
 /// ``KuhnAction.CALL``, and ``KuhnAction.FOLD``.
-#[pyclass(name = "KuhnAction")]
+#[pyclass(from_py_object, name = "KuhnAction")]
 #[derive(Clone)]
 pub struct KuhnAction(PkKuhnAction);
 
@@ -3704,7 +3704,7 @@ impl KuhnAction {
 ///
 /// ``KuhnHistory`` is a value type: ``push`` returns a new history with the
 /// action appended, leaving the original unchanged.
-#[pyclass(name = "KuhnHistory")]
+#[pyclass(from_py_object, name = "KuhnHistory")]
 #[derive(Clone)]
 pub struct KuhnHistory(PkKuhnHistory);
 
@@ -3760,7 +3760,7 @@ impl KuhnHistory {
 ///
 /// Info sets are the keys used by strategy tables — a strategy maps each info set
 /// to a probability distribution over legal actions.
-#[pyclass(name = "KuhnInfoSet")]
+#[pyclass(from_py_object, name = "KuhnInfoSet")]
 #[derive(Clone)]
 pub struct KuhnInfoSet(PkKuhnInfoSet);
 
@@ -3807,7 +3807,7 @@ impl KuhnInfoSet {
 ///     terminal = state.apply(KuhnAction.BET).apply(KuhnAction.CALL)
 ///     assert terminal.is_terminal()
 ///     assert terminal.payoff() == [-2, 2]  # King beats Jack
-#[pyclass(name = "KuhnState")]
+#[pyclass(from_py_object, name = "KuhnState")]
 #[derive(Clone)]
 pub struct KuhnState(PkKuhnState);
 
