@@ -1,6 +1,6 @@
 [package]
 name = "pkpy"
-version = "0.0.39"
+version = "0.0.52"
 edition = "2021"
 description = "Python bindings for pkcore, a high-performance poker analysis library"
 license = "GPL-3.0-or-later"
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.28", features = ["extension-module"] }
-pkcore = "0.0.39"
+pkcore = "0.0.52"
 
 [profile.release]
 lto = true
