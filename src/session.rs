@@ -1,6 +1,9 @@
 //! Bindings for pkcore's casino::session module.
 
+use crate::table_no_cell::TableNoCell;
+use crate::{to_py_err, ForcedBets, Winnings};
 use pkcore::casino::action::PlayerAction as PkPlayerAction;
+use pkcore::casino::session::PokerSession as PkPokerSession;
 use pkcore::casino::session::SessionStep as PkSessionStep;
 use pyo3::prelude::*;
 
@@ -113,8 +116,97 @@ impl SessionStep {
     }
 }
 
+/// A multi-hand poker session wrapping a `TableNoCell`.
+///
+/// Drive a hand: `start_hand()` → loop on `next_step()`, calling
+/// `apply_action(seat, PlayerAction.X)` for each `PlayerToAct` —
+/// `end_hand()` to settle. Use `set_blinds` (deferred mid-hand) to
+/// adjust forced bets between hands.
+#[pyclass(name = "PokerSession")]
+pub struct PokerSession(pub(crate) PkPokerSession);
+
+#[pymethods]
+impl PokerSession {
+    #[new]
+    fn new(table: &TableNoCell) -> Self {
+        Self(PkPokerSession::new(table.0.clone()))
+    }
+
+    /// Convenience: heads-up session in one call. Mirrors
+    /// `TableNoCell.heads_up`'s defaults.
+    #[staticmethod]
+    #[pyo3(signature = (forced, stacks=(1000, 1000), names=("A".to_string(), "B".to_string())))]
+    fn heads_up(forced: &ForcedBets, stacks: (usize, usize), names: (String, String)) -> Self {
+        let table = TableNoCell::heads_up(forced, stacks, names);
+        Self(PkPokerSession::new(table.0))
+    }
+
+    // ── 0.0.53 NEW ───────────────────────────────────────────────────────
+
+    fn set_blinds(&mut self, forced: &ForcedBets) {
+        self.0.set_blinds(forced.0);
+    }
+
+    fn forced_at_hand_start(&self) -> ForcedBets {
+        ForcedBets(self.0.forced_at_hand_start())
+    }
+
+    // ── Hand lifecycle ──────────────────────────────────────────────────
+
+    fn start_hand(&mut self) -> PyResult<()> {
+        self.0.start_hand().map_err(to_py_err)
+    }
+
+    fn end_hand(&mut self) -> PyResult<Winnings> {
+        self.0.end_hand().map(Winnings).map_err(to_py_err)
+    }
+
+    fn is_hand_in_progress(&self) -> bool {
+        self.0.is_hand_in_progress()
+    }
+
+    fn is_hand_complete(&self) -> bool {
+        self.0.is_hand_complete()
+    }
+
+    fn next_actor(&mut self) -> Option<u8> {
+        self.0.next_actor()
+    }
+
+    fn next_step(&mut self) -> SessionStep {
+        SessionStep(self.0.next_step())
+    }
+
+    fn apply_action(&mut self, seat: u8, action: &PlayerAction) -> PyResult<()> {
+        self.0.apply_action(seat, action.0).map_err(to_py_err)
+    }
+
+    // ── Session-wide ────────────────────────────────────────────────────
+
+    fn count_funded(&self) -> usize {
+        self.0.count_funded()
+    }
+
+    fn eliminate_busted(&mut self) -> Vec<u8> {
+        self.0.eliminate_busted()
+    }
+
+    // ── Field accessors ─────────────────────────────────────────────────
+
+    #[getter]
+    fn hand_number(&self) -> u32 {
+        self.0.hand_number
+    }
+
+    #[getter]
+    fn shuffled_deck_str(&self) -> Option<String> {
+        self.0.shuffled_deck_str.clone()
+    }
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PlayerAction>()?;
     m.add_class::<SessionStep>()?;
+    m.add_class::<PokerSession>()?;
     Ok(())
 }

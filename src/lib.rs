@@ -2643,7 +2643,7 @@ impl PotWin {
 /// The payout results from a completed hand — a list of Win records.
 #[pyclass(from_py_object, name = "Winnings")]
 #[derive(Clone)]
-pub struct Winnings(PkWinnings);
+pub struct Winnings(pub(crate) PkWinnings);
 
 #[pymethods]
 impl Winnings {

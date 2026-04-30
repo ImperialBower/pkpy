@@ -190,11 +190,7 @@ impl TableNoCell {
     /// Default stacks are (1000, 1000); default names are ("A", "B").
     #[staticmethod]
     #[pyo3(signature = (forced, stacks=(1000, 1000), names=("A".to_string(), "B".to_string())))]
-    fn heads_up(
-        forced: &ForcedBets,
-        stacks: (usize, usize),
-        names: (String, String),
-    ) -> Self {
+    pub fn heads_up(forced: &ForcedBets, stacks: (usize, usize), names: (String, String)) -> Self {
         let seats = PkSeatsNoCell::new(vec![
             PkSeatNoCell::new(PkPlayerNoCell::new_with_chips(names.0, stacks.0)),
             PkSeatNoCell::new(PkPlayerNoCell::new_with_chips(names.1, stacks.1)),
