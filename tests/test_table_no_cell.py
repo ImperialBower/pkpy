@@ -27,3 +27,24 @@ class TestPlayerNoCell:
     def test_repr_contains_handle(self):
         r = repr(PlayerNoCell("Alice", chips=1000))
         assert "Alice" in r
+
+
+class TestSeatNoCell:
+    def test_construct_from_player(self):
+        from pkpy import SeatNoCell
+        seat = SeatNoCell(PlayerNoCell("Alice", chips=1000))
+        assert not seat.is_empty()
+
+    def test_default_state_predicates(self):
+        from pkpy import SeatNoCell
+        seat = SeatNoCell(PlayerNoCell("Alice", chips=1000))
+        # A fresh, funded seat is "yet to act" and not all-in.
+        # Note: is_in_hand() is True for any funded, non-folded seat — it
+        # answers "is this seat eligible to play?" not "is a hand in progress?"
+        assert seat.is_yet_to_act()
+        assert not seat.is_all_in()
+
+    def test_repr_contains_handle(self):
+        from pkpy import SeatNoCell
+        r = repr(SeatNoCell(PlayerNoCell("Alice", chips=1000)))
+        assert "Alice" in r

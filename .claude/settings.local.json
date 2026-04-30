@@ -8,7 +8,8 @@
       "Bash(find /Users/christoph/src/github.com/folkengine/pkcore/src -type f -name *.rs)",
       "Bash(.venv/bin/python examples/gto.py -p \"K♠ K♥\" -v \"66+,AJs+,KQs,AJo+,KQo\" 2>&1)",
       "Bash(.venv/bin/python examples/gto.py -p \"K♠ K♥\" -v \"AA,QQ\" -b \"9♣ 6♦ 5♥\")",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(make build *)"
     ]
   }
 }
