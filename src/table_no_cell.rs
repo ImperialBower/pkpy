@@ -1,4 +1,4 @@
-//! Bindings for pkcore's casino::table_no_cell module.
+//! Bindings for pkcore's `casino::table_no_cell` module.
 
 use crate::ForcedBets;
 use pkcore::casino::table_no_cell::PlayerNoCell as PkPlayerNoCell;

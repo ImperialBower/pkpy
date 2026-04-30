@@ -1,4 +1,4 @@
-//! Bindings for pkcore's casino::session module.
+//! Bindings for pkcore's `casino::session` module.
 
 use crate::table_no_cell::TableNoCell;
 use crate::{to_py_err, ForcedBets, Winnings};
