@@ -48,3 +48,49 @@ class TestSeatNoCell:
         from pkpy import SeatNoCell
         r = repr(SeatNoCell(PlayerNoCell("Alice", chips=1000)))
         assert "Alice" in r
+
+
+class TestSeatsNoCell:
+    def _two_seats(self):
+        from pkpy import SeatNoCell
+        return [
+            SeatNoCell(PlayerNoCell("Alice", chips=1000)),
+            SeatNoCell(PlayerNoCell("Bob", chips=2000)),
+        ]
+
+    def test_construct_from_list(self):
+        from pkpy import SeatsNoCell
+        seats = SeatsNoCell(self._two_seats())
+        assert seats.size() == 2
+
+    def test_total_chip_count(self):
+        from pkpy import SeatsNoCell
+        seats = SeatsNoCell(self._two_seats())
+        assert seats.total_chip_count() == 3000
+
+    def test_get_seat(self):
+        from pkpy import SeatsNoCell
+        seats = SeatsNoCell(self._two_seats())
+        seat = seats.get_seat(0)
+        assert seat is not None
+        assert not seat.is_empty()
+
+    def test_get_seat_out_of_range(self):
+        from pkpy import SeatsNoCell
+        seats = SeatsNoCell(self._two_seats())
+        assert seats.get_seat(99) is None
+
+    def test_default_betting_state(self):
+        from pkpy import SeatsNoCell
+        seats = SeatsNoCell(self._two_seats())
+        # Before any hand starts: no bets posted, no cards dealt.
+        # count_active_in_hand reflects funded seats (= 2), not whether a
+        # hand is in progress — see TestSeatNoCell on the same distinction.
+        assert seats.current_bet() == 0
+        assert not seats.are_dealt()
+        assert seats.count_active_in_hand() == 2
+
+    def test_repr_includes_size(self):
+        from pkpy import SeatsNoCell
+        r = repr(SeatsNoCell(self._two_seats()))
+        assert "size=2" in r
