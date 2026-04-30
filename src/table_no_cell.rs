@@ -1,8 +1,10 @@
 //! Bindings for pkcore's casino::table_no_cell module.
 
+use crate::ForcedBets;
 use pkcore::casino::table_no_cell::PlayerNoCell as PkPlayerNoCell;
 use pkcore::casino::table_no_cell::SeatNoCell as PkSeatNoCell;
 use pkcore::casino::table_no_cell::SeatsNoCell as PkSeatsNoCell;
+use pkcore::casino::table_no_cell::TableNoCell as PkTableNoCell;
 use pyo3::prelude::*;
 
 /// A no-cell player record (handle + chip stack + state flags).
@@ -168,9 +170,67 @@ impl SeatsNoCell {
     }
 }
 
+/// A no-Cell poker table — same semantics as `TableCelled` but without
+/// the interior mutability indirection. Wrapped by `PokerSession` for
+/// multi-hand session management.
+#[pyclass(from_py_object, name = "TableNoCell")]
+#[derive(Clone)]
+pub struct TableNoCell(pub(crate) PkTableNoCell);
+
+#[pymethods]
+impl TableNoCell {
+    /// Construct a NLH table from existing seats and forced-bet config.
+    /// Faithful pkcore mirror.
+    #[staticmethod]
+    fn nlh_from_seats(seats: &SeatsNoCell, forced: &ForcedBets) -> Self {
+        Self(PkTableNoCell::nlh_from_seats(seats.0.clone(), forced.0))
+    }
+
+    /// Convenience: heads-up table with two named, equally-stacked players.
+    /// Default stacks are (1000, 1000); default names are ("A", "B").
+    #[staticmethod]
+    #[pyo3(signature = (forced, stacks=(1000, 1000), names=("A".to_string(), "B".to_string())))]
+    fn heads_up(
+        forced: &ForcedBets,
+        stacks: (usize, usize),
+        names: (String, String),
+    ) -> Self {
+        let seats = PkSeatsNoCell::new(vec![
+            PkSeatNoCell::new(PkPlayerNoCell::new_with_chips(names.0, stacks.0)),
+            PkSeatNoCell::new(PkPlayerNoCell::new_with_chips(names.1, stacks.1)),
+        ]);
+        Self(PkTableNoCell::nlh_from_seats(seats, forced.0))
+    }
+
+    fn seat_count(&self) -> u8 {
+        self.0.seats.size()
+    }
+
+    fn seats(&self) -> SeatsNoCell {
+        SeatsNoCell(self.0.seats.clone())
+    }
+
+    fn determine_small_blind(&self) -> u8 {
+        self.0.determine_small_blind()
+    }
+
+    fn determine_big_blind(&self) -> u8 {
+        self.0.determine_big_blind()
+    }
+
+    fn next_occupied_seat_after(&self, start: u8, n: usize) -> u8 {
+        self.0.next_occupied_seat_after(start, n)
+    }
+
+    fn __repr__(&self) -> String {
+        format!("TableNoCell(seats={})", self.0.seats.size())
+    }
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PlayerNoCell>()?;
     m.add_class::<SeatNoCell>()?;
     m.add_class::<SeatsNoCell>()?;
+    m.add_class::<TableNoCell>()?;
     Ok(())
 }

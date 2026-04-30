@@ -2271,7 +2271,7 @@ impl Deck {
 ///     100
 #[pyclass(from_py_object, name = "ForcedBets")]
 #[derive(Clone)]
-pub struct ForcedBets(PkForcedBets);
+pub struct ForcedBets(pub(crate) PkForcedBets);
 
 #[pymethods]
 impl ForcedBets {

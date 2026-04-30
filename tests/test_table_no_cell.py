@@ -94,3 +94,47 @@ class TestSeatsNoCell:
         from pkpy import SeatsNoCell
         r = repr(SeatsNoCell(self._two_seats()))
         assert "size=2" in r
+
+
+class TestTableNoCell:
+    def test_nlh_from_seats(self):
+        from pkpy import ForcedBets, SeatNoCell, SeatsNoCell, TableNoCell
+        seats = SeatsNoCell([
+            SeatNoCell(PlayerNoCell("Alice", chips=1000)),
+            SeatNoCell(PlayerNoCell("Bob", chips=1000)),
+        ])
+        forced = ForcedBets(50, 100)
+        table = TableNoCell.nlh_from_seats(seats, forced)
+        assert table.seat_count() == 2
+
+    def test_heads_up_defaults(self):
+        from pkpy import ForcedBets, TableNoCell
+        forced = ForcedBets(50, 100)
+        table = TableNoCell.heads_up(forced)
+        assert table.seat_count() == 2
+        # Default stacks are (1000, 1000).
+        seats = table.seats()
+        assert seats.total_chip_count() == 2000
+
+    def test_heads_up_custom_stacks_and_names(self):
+        from pkpy import ForcedBets, TableNoCell
+        forced = ForcedBets(50, 100)
+        table = TableNoCell.heads_up(forced, stacks=(500, 1500), names=("X", "Y"))
+        seats = table.seats()
+        assert seats.total_chip_count() == 2000
+        assert seats.size() == 2
+
+    def test_blind_position_lookups(self):
+        from pkpy import ForcedBets, TableNoCell
+        table = TableNoCell.heads_up(ForcedBets(50, 100))
+        # In heads-up, button is small blind. We don't assert specific seat
+        # numbers here — just that the methods return seat indices in range.
+        sb = table.determine_small_blind()
+        bb = table.determine_big_blind()
+        assert sb < table.seat_count()
+        assert bb < table.seat_count()
+
+    def test_repr_includes_seat_count(self):
+        from pkpy import ForcedBets, TableNoCell
+        r = repr(TableNoCell.heads_up(ForcedBets(50, 100)))
+        assert "seats=2" in r
