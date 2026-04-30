@@ -1,6 +1,7 @@
 //! Bindings for pkcore's casino::session module.
 
 use pkcore::casino::action::PlayerAction as PkPlayerAction;
+use pkcore::casino::session::SessionStep as PkSessionStep;
 use pyo3::prelude::*;
 
 /// A player's action in a poker hand.
@@ -78,7 +79,42 @@ impl PlayerAction {
     }
 }
 
+/// A snapshot of where a hand is in its lifecycle.
+///
+/// Returned by `PokerSession.next_step()`. Read-only; inspect via `kind()`
+/// and (for `PlayerToAct`) `seat()`.
+#[pyclass(from_py_object, name = "SessionStep")]
+#[derive(Clone)]
+pub struct SessionStep(pub(crate) PkSessionStep);
+
+#[pymethods]
+impl SessionStep {
+    fn kind(&self) -> &'static str {
+        match self.0 {
+            PkSessionStep::PlayerToAct(_) => "PlayerToAct",
+            PkSessionStep::StreetAdvanced => "StreetAdvanced",
+            PkSessionStep::HandComplete => "HandComplete",
+        }
+    }
+
+    fn seat(&self) -> Option<u8> {
+        match self.0 {
+            PkSessionStep::PlayerToAct(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        match self.0 {
+            PkSessionStep::PlayerToAct(s) => format!("SessionStep.PlayerToAct(seat={s})"),
+            PkSessionStep::StreetAdvanced => "SessionStep.StreetAdvanced".to_string(),
+            PkSessionStep::HandComplete => "SessionStep.HandComplete".to_string(),
+        }
+    }
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PlayerAction>()?;
+    m.add_class::<SessionStep>()?;
     Ok(())
 }

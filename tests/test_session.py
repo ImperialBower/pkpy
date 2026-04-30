@@ -46,3 +46,16 @@ class TestPlayerAction:
         assert "Bet" in repr(PlayerAction.bet(200))
         assert "200" in repr(PlayerAction.bet(200))
         assert "Fold" in repr(PlayerAction.fold())
+
+
+class TestSessionStep:
+    """SessionStep is read-only — produced by PokerSession.next_step().
+
+    These tests construct one indirectly via a session in Phase 7. For now,
+    we just confirm the type exists in the module so import doesn't fail.
+    """
+
+    def test_import(self):
+        from pkpy import SessionStep
+        # Class must exist; instances are created by PokerSession.next_step.
+        assert SessionStep is not None
