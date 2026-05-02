@@ -1,4 +1,4 @@
-.PHONY: setup build test demo the-hand calc gto fmt clippy clean ayce default help
+.PHONY: setup build test demo the-hand calc gto fmt clippy clean ayce default help version release
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -24,6 +24,8 @@ help:
 	@echo "  make clippy     - Run clippy linter"
 	@echo "  make clean      - Remove build artifacts and venv"
 	@echo "  make ayce       - Run fmt, build, test, and demo"
+	@echo "  make version    - Print the crate version from Cargo.toml"
+	@echo "  make release    - Tag HEAD as v<Cargo.toml version> and push (drives publish.yml)"
 	@echo "  make help       - Display this help message"
 	@echo ""
 
@@ -75,3 +77,18 @@ clean:
 
 # All You Can Eat - Run all checks
 ayce: fmt build test demo
+
+# Print the crate version from Cargo.toml
+version:
+	@awk -F'"' '/^version/{print $$2; exit}' Cargo.toml
+
+# Cut a release: verify, annotate-tag from Cargo.toml's version, push to origin.
+# The pushed tag is what fires .github/workflows/publish.yml.
+release:
+	@v=$$(awk -F'"' '/^version/{print $$2; exit}' Cargo.toml); \
+	if [ -z "$$v" ]; then echo "could not parse version from Cargo.toml"; exit 1; fi; \
+	if ! git diff --quiet HEAD; then echo "working tree has uncommitted changes; commit or stash first"; exit 1; fi; \
+	if git rev-parse "v$$v" >/dev/null 2>&1; then echo "tag v$$v already exists"; exit 1; fi; \
+	if [ -f CHANGELOG.md ] && ! grep -q "^## \[$$v\]" CHANGELOG.md; then echo "CHANGELOG.md has no entry for $$v"; exit 1; fi; \
+	echo "Tagging v$$v on $$(git rev-parse --short HEAD) and pushing to origin..."; \
+	git tag -a "v$$v" -m "Release v$$v" && git push origin "v$$v"
