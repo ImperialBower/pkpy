@@ -58,7 +58,13 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-fn to_py_err(e: impl std::fmt::Display) -> PyErr {
+mod bot;
+mod hand_history;
+mod session;
+mod stats;
+mod table_no_cell;
+
+pub(crate) fn to_py_err(e: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(e.to_string())
 }
 
@@ -2265,7 +2271,7 @@ impl Deck {
 ///     100
 #[pyclass(from_py_object, name = "ForcedBets")]
 #[derive(Clone)]
-pub struct ForcedBets(PkForcedBets);
+pub struct ForcedBets(pub(crate) PkForcedBets);
 
 #[pymethods]
 impl ForcedBets {
@@ -2637,7 +2643,7 @@ impl PotWin {
 /// The payout results from a completed hand — a list of Win records.
 #[pyclass(from_py_object, name = "Winnings")]
 #[derive(Clone)]
-pub struct Winnings(PkWinnings);
+pub struct Winnings(pub(crate) PkWinnings);
 
 #[pymethods]
 impl Winnings {
@@ -2722,6 +2728,8 @@ impl TableAction {
             PkTableAction::ClosesTheAction(_) => "ClosesTheAction".into(),
             PkTableAction::CloseItOut(_) => "CloseItOut".into(),
             PkTableAction::EndHand => "EndHand".into(),
+            PkTableAction::ChipAuditFailed(_, _) => "ChipAuditFailed".into(),
+            PkTableAction::ResetTable => "ResetTable".into(),
             _ => "Other".into(),
         }
     }
@@ -4036,5 +4044,27 @@ fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(distinct_5_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(unique_2_card_hands, m)?)?;
     m.add_function(wrap_pyfunction!(distinct_2_card_hands, m)?)?;
+    hand_history::register(m)?;
+    stats::register(m)?;
+    bot::register(m)?;
+    session::register(m)?;
+    table_no_cell::register(m)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod table_action_kind_tests {
+    use super::*;
+
+    #[test]
+    fn chip_audit_failed_returns_explicit_kind() {
+        let ta = TableAction(PkTableAction::ChipAuditFailed(100, 99));
+        assert_eq!("ChipAuditFailed", ta.kind());
+    }
+
+    #[test]
+    fn reset_table_returns_explicit_kind() {
+        let ta = TableAction(PkTableAction::ResetTable);
+        assert_eq!("ResetTable", ta.kind());
+    }
 }
