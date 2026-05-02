@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pkpython"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python bindings for pkcore, a high-performance poker analysis library"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
