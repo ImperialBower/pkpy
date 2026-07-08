@@ -1,10 +1,10 @@
-//! Bindings for pkcore's `casino::table_no_cell` module.
+//! Bindings for pkcore's `casino::table` module (the `&mut self` engine).
 
 use crate::ForcedBets;
-use pkcore::casino::table_no_cell::PlayerNoCell as PkPlayerNoCell;
-use pkcore::casino::table_no_cell::SeatNoCell as PkSeatNoCell;
-use pkcore::casino::table_no_cell::SeatsNoCell as PkSeatsNoCell;
-use pkcore::casino::table_no_cell::TableNoCell as PkTableNoCell;
+use pkcore::casino::table::Player as PkPlayerNoCell;
+use pkcore::casino::table::Seat as PkSeatNoCell;
+use pkcore::casino::table::Seats as PkSeatsNoCell;
+use pkcore::casino::table::Table as PkTableNoCell;
 use pyo3::prelude::*;
 
 /// A no-cell player record (handle + chip stack + state flags).

@@ -28,12 +28,13 @@ use pkcore::cards::Cards as PkCards;
 use pkcore::casino::cashier::chips::Stack as PkStack;
 use pkcore::casino::dealer::{Dealer as PkDealer, DealerError as PkDealerError};
 use pkcore::casino::game::ForcedBets as PkForcedBets;
-use pkcore::casino::player::Player as PkPlayer;
+use pkcore::casino::action::TableAction as PkTableAction;
+use pkcore::casino::equity::seat_equity::SeatEquity as PkSeatEquity;
+use pkcore::casino::equity::seatbit::Seatbit as PkSeatbit;
 use pkcore::casino::state::PlayerState as PkPlayerState;
-use pkcore::casino::table::event::{TableAction as PkTableAction, TableLog as PkTableLog};
-use pkcore::casino::table::seats::seat_equity::SeatEquity as PkSeatEquity;
-use pkcore::casino::table::seats::seatbit::Seatbit as PkSeatbit;
-use pkcore::casino::table::winnings::{PotWin as PkPotWin, Winnings as PkWinnings};
+use pkcore::casino::player::Player as PkPlayer;
+use pkcore::casino::table_celled::event::TableLog as PkTableLog;
+use pkcore::casino::winnings::{PotWin as PkPotWin, Winnings as PkWinnings};
 use pkcore::deck::Deck as PkDeck;
 use pkcore::games::kuhn::{
     KuhnAction as PkKuhnAction, KuhnCard as PkKuhnCard, KuhnCfr as PkKuhnCfr,
@@ -3269,8 +3270,10 @@ pub struct DealEval(PkDealEval);
 impl DealEval {
     /// Create a DealEval for the given hole cards, enumerating all runouts.
     #[new]
-    fn new(hands: &HoleCards) -> Self {
-        DealEval(PkDealEval::new(hands.0.clone()))
+    fn new(hands: &HoleCards) -> PyResult<Self> {
+        PkDealEval::new(hands.0.clone())
+            .map(DealEval)
+            .map_err(to_py_err)
     }
 
     /// Total number of board runout combinations evaluated.
