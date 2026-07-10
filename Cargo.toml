@@ -1,6 +1,6 @@
 [package]
 name = "pkpy"
-version = "0.0.54"
+version = "0.2.1"
 edition = "2021"
 description = "Python bindings for pkcore, a high-performance poker analysis library"
 license = "GPL-3.0-or-later"
