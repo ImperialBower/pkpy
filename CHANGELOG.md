@@ -6,6 +6,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project tracks [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
+## [0.7.0] - 2026-08-22
+
+### Changed
+
+- Bumped `pkcore` dependency from `0.2.1` to `0.7.0`, skipping the `0.3`, `0.4`,
+  `0.5` and `0.6` lines.
+- Bumped `pkpy` crate version to `0.7.0` to stay in lockstep with `pkcore`.
+
+### Breaking (Python API)
+
+- **`Deck.get(index)` returns `Card | None` instead of `Card`.** `pkcore` 0.7.0
+  made `Deck::get` return `Option<Card>` rather than indexing out of bounds, so
+  an index outside `0..=51` is now `None` in Python instead of an abort. Callers
+  that trusted the index are unaffected; callers that pass computed indices
+  should check for `None`.
+- **`PokerSession.next_actor()` raises instead of returning `None` on a failed
+  street advance.** `pkcore` 0.7.0 changed `next_actor` to
+  `Result<Option<u8>, PKError>` (`DEFECT_019`). Previously a dry deck collapsed
+  to `None`, which every `while (actor := session.next_actor()) is not None`
+  loop reads as "hand over" — `end_hand()` then raised `ActionIsntFinished` and
+  the pot was stranded. Only "no streets remain" is still `None`; a real failure
+  now raises `ValueError`. Recover with `abort_hand()`.
+- **`KuhnCfr.train(iterations)` can raise.** `pkcore` 0.7.0 changed
+  `KuhnCfr::train` to return `Result<(), PKError>`. pkpy previously discarded
+  that result, so a training error produced a silently half-trained strategy.
+- **`SevenFiveBCM.from_cards` and `IndexCardMap.from_cards` raise `ValueError` on
+  an unsupported card count.** `pkcore` 0.6.0 replaced `Ok(Self::default())` with
+  `Err(PKError::InvalidCardCount)`. Code that relied on a rank-0 default for a
+  three-card input must catch the error instead.
+
+### Added
+
+- **`PokerSession.abort_hand()` → `int`.** Abandons a hand that cannot continue,
+  returning each player's committed chips and resetting the table. This is the
+  documented escape hatch for a `Failed` step and for a raising `next_actor()`;
+  `end_hand()` cannot settle such a hand because there was no showdown.
+- **`SessionStep` gained the `"Failed"` kind and a `SessionStep.error()`
+  accessor.** `pkcore` 0.7.0 added `SessionStep::Failed(PKError)` for a hand that
+  cannot continue (dealing or chip collection failed mid-hand). `kind()` now
+  returns `"Failed"` for it and `error()` returns the message as a `str`; it
+  returns `None` for every other kind.
+
+### Migration notes
+
+Drive-a-hand loops should handle the new failure kind:
+
+```python
+session.start_hand()
+while True:
+    step = session.next_step()
+    if step.kind() == "Failed":
+        session.abort_hand()       # NOT end_hand() — no showdown to resolve
+        break
+    if step.kind() == "HandComplete":
+        session.end_hand()
+        break
+    if step.kind() == "PlayerToAct":
+        session.apply_action(step.seat(), decide(step.seat()))
+```
+
+Verified with `make ayce`: 228 pytest tests pass, `demo.py` and all three
+examples (`the_hand.py`, `calc.py`, `gto.py`) run clean.
+
+---
+
 ## [0.2.1] - 2026-07-10
 
 ### Changed

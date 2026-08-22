@@ -2240,10 +2240,11 @@ impl Deck {
         Cards(PkDeck::poker_cards_shuffled())
     }
 
-    /// Returns the card at the given index (0–51) in deck order.
+    /// Returns the card at the given index (0–51) in deck order, or
+    /// `None` when the index is out of range.
     #[staticmethod]
-    fn get(index: usize) -> Card {
-        Card(PkDeck::get(index))
+    fn get(index: usize) -> Option<Card> {
+        PkDeck::get(index).map(Card)
     }
 
     /// Returns the number of cards in a standard deck (always 52).
@@ -3956,8 +3957,11 @@ impl KuhnCfr {
     /// Run ``iterations`` of vanilla CFR (traverses all 6 deals each iteration).
     ///
     /// Calling ``train`` multiple times accumulates on top of prior training.
-    fn train(&mut self, iterations: u32) {
-        self.0.train(iterations);
+    ///
+    /// Raises on a training error rather than reporting a silently
+    /// half-trained strategy.
+    fn train(&mut self, iterations: u32) -> PyResult<()> {
+        self.0.train(iterations).map_err(to_py_err)
     }
 
     /// Average strategy accumulated over all training iterations.

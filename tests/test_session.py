@@ -91,6 +91,23 @@ class TestPokerSession:
         assert step.kind() == "PlayerToAct"
         assert step.seat() is not None
 
+    def test_healthy_step_has_no_error(self):
+        # pkcore 0.7.0 added SessionStep::Failed; error() is None otherwise.
+        session = self._heads_up()
+        session.start_hand()
+        assert session.next_step().error() is None
+
+    def test_abort_hand_refunds_and_ends_hand(self):
+        # The escape hatch for a Failed step: refund committed chips and
+        # reset the table. Blinds are posted at start_hand, so the refund
+        # covers at least the small blind.
+        session = self._heads_up()
+        session.start_hand()
+        refunded = session.abort_hand()
+        assert isinstance(refunded, int)
+        assert refunded > 0
+        assert not session.is_hand_in_progress()
+
     def test_count_funded(self):
         session = self._heads_up()
         assert session.count_funded() == 2
