@@ -403,6 +403,12 @@ class TestDeck:
         cards = [Deck.get(i) for i in range(52)]
         assert len(set(str(c) for c in cards)) == 52
 
+    def test_get_out_of_range_is_none(self):
+        # pkcore 0.7.0: Deck::get returns Option<Card> instead of panicking.
+        assert Deck.get(52) is None
+        assert Deck.get(999) is None
+        assert Deck.get(51) is not None
+
     def test_shuffled_contains_same_cards(self):
         ordered = Deck.poker_cards()
         shuffled = Deck.poker_cards_shuffled()
@@ -827,10 +833,10 @@ class TestSevenFiveBCM:
         assert isinstance(bcm.bc, Bard)
         assert isinstance(bcm.best, Bard)
 
-    def test_invalid_card_count_returns_default(self):
-        # pkcore returns Ok(default) for unsupported counts rather than Err
-        bcm = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs"))
-        assert bcm.rank == 0
+    def test_invalid_card_count_raises(self):
+        # pkcore 0.6.0 made this an error instead of Ok(default)
+        with pytest.raises(ValueError):
+            SevenFiveBCM.from_cards(Cards.parse("As Ks Qs"))
 
     def test_equality(self):
         bcm1 = SevenFiveBCM.from_cards(ROYAL_FLUSH_5)
@@ -878,10 +884,10 @@ class TestIndexCardMap:
         assert isinstance(icm.cards, str)
         assert isinstance(icm.best, str)
 
-    def test_invalid_card_count_returns_default(self):
-        # pkcore returns Ok(default) for unsupported counts rather than Err
-        icm = IndexCardMap.from_cards(Cards.parse("As Ks Qs"))
-        assert icm.rank == 0
+    def test_invalid_card_count_raises(self):
+        # pkcore 0.6.0 made this an error instead of Ok(default)
+        with pytest.raises(ValueError):
+            IndexCardMap.from_cards(Cards.parse("As Ks Qs"))
 
     def test_equality(self):
         icm1 = IndexCardMap.from_cards(ROYAL_FLUSH_5)

@@ -97,6 +97,19 @@ impl SessionStep {
             PkSessionStep::PlayerToAct(_) => "PlayerToAct",
             PkSessionStep::StreetAdvanced => "StreetAdvanced",
             PkSessionStep::HandComplete => "HandComplete",
+            PkSessionStep::Failed(_) => "Failed",
+        }
+    }
+
+    /// The error message for a `Failed` step, else `None`.
+    ///
+    /// A `Failed` step means the hand cannot continue (a dry deck, a failed
+    /// chip collection). It is **not** resolvable with `end_hand()` — call
+    /// `abort_hand()` to refund committed chips and reset the table.
+    fn error(&self) -> Option<String> {
+        match self.0 {
+            PkSessionStep::Failed(e) => Some(e.to_string()),
+            _ => None,
         }
     }
 
@@ -112,6 +125,7 @@ impl SessionStep {
             PkSessionStep::PlayerToAct(s) => format!("SessionStep.PlayerToAct(seat={s})"),
             PkSessionStep::StreetAdvanced => "SessionStep.StreetAdvanced".to_string(),
             PkSessionStep::HandComplete => "SessionStep.HandComplete".to_string(),
+            PkSessionStep::Failed(e) => format!("SessionStep.Failed({e})"),
         }
     }
 }
@@ -169,8 +183,8 @@ impl PokerSession {
         self.0.is_hand_complete()
     }
 
-    fn next_actor(&mut self) -> Option<u8> {
-        self.0.next_actor()
+    fn next_actor(&mut self) -> PyResult<Option<u8>> {
+        self.0.next_actor().map_err(to_py_err)
     }
 
     fn next_step(&mut self) -> SessionStep {
@@ -179,6 +193,16 @@ impl PokerSession {
 
     fn apply_action(&mut self, seat: u8, action: &PlayerAction) -> PyResult<()> {
         self.0.apply_action(seat, action.0).map_err(to_py_err)
+    }
+
+    /// Abandons a hand that cannot continue, returning the chips refunded.
+    ///
+    /// Use this when `next_step()` yields a `Failed` step or `next_actor()`
+    /// raises: each player's committed chips go back to their stack and the
+    /// table resets. `end_hand()` cannot settle such a hand — there was no
+    /// showdown to resolve.
+    fn abort_hand(&mut self) -> PyResult<usize> {
+        self.0.abort_hand().map_err(to_py_err)
     }
 
     // ── Session-wide ────────────────────────────────────────────────────

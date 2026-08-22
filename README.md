@@ -110,7 +110,8 @@ from pkpy import Deck
 
 deck = Deck.poker_cards()           # -> Cards, ordered A♠ down to 2♣
 shuffled = Deck.poker_cards_shuffled()  # -> Cards, randomly shuffled
-Deck.get(0)                         # -> Card (A♠, the first card in deck order)
+Deck.get(0)                         # -> Card | None (A♠, the first card in deck order)
+Deck.get(52)                        # -> None (index out of range)
 Deck.len()                          # -> 52
 ```
 
