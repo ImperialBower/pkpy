@@ -170,9 +170,8 @@ impl SeatsNoCell {
     }
 }
 
-/// A no-Cell poker table — same semantics as `TableCelled` but without
-/// the interior mutability indirection. Wrapped by `PokerSession` for
-/// multi-hand session management.
+/// A poker table using plain `&mut self` mutability. Wrapped by
+/// `PokerSession` for multi-hand session management.
 #[pyclass(from_py_object, name = "TableNoCell")]
 #[derive(Clone)]
 pub struct TableNoCell(pub(crate) PkTableNoCell);

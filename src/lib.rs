@@ -31,9 +31,8 @@ use pkcore::casino::dealer::{Dealer as PkDealer, DealerError as PkDealerError};
 use pkcore::casino::equity::seat_equity::SeatEquity as PkSeatEquity;
 use pkcore::casino::equity::seatbit::Seatbit as PkSeatbit;
 use pkcore::casino::game::ForcedBets as PkForcedBets;
-use pkcore::casino::player::Player as PkPlayer;
 use pkcore::casino::state::PlayerState as PkPlayerState;
-use pkcore::casino::table_celled::event::TableLog as PkTableLog;
+use pkcore::casino::table::Player as PkPlayer;
 use pkcore::casino::winnings::{PotWin as PkPotWin, Winnings as PkWinnings};
 use pkcore::deck::Deck as PkDeck;
 use pkcore::games::kuhn::{
@@ -2473,7 +2472,7 @@ impl Player {
 
     /// Current chip count (stack only, not including active bet).
     fn chips(&self) -> usize {
-        self.0.chips.count()
+        self.0.chips
     }
 
     /// Total chips (stack + any active bet).
@@ -2483,12 +2482,12 @@ impl Player {
 
     /// Chips committed to the current hand.
     fn chips_in_play(&self) -> usize {
-        self.0.get_chips_in_play()
+        self.0.chips_in_play
     }
 
     /// Current action state.
     fn state(&self) -> PlayerState {
-        PlayerState(self.0.state.get())
+        PlayerState(self.0.state)
     }
 
     fn is_active(&self) -> bool {
@@ -2501,7 +2500,7 @@ impl Player {
         self.0.is_in_hand()
     }
     fn is_ready(&self) -> bool {
-        self.0.is_ready()
+        self.0.state.is_ready()
     }
     fn is_out(&self) -> bool {
         self.0.is_out()
@@ -2514,10 +2513,10 @@ impl Player {
     }
 
     fn __str__(&self) -> String {
-        format!("{} ({})", self.0.handle, self.0.chips.count())
+        format!("{} ({})", self.0.handle, self.0.chips)
     }
     fn __repr__(&self) -> String {
-        format!("Player('{}', {})", self.0.handle, self.0.chips.count())
+        format!("Player('{}', {})", self.0.handle, self.0.chips)
     }
 }
 
@@ -2760,28 +2759,41 @@ impl TableAction {
 
 /// The event log for a poker table — an ordered list of TableAction records.
 #[pyclass(unsendable, name = "TableLog")]
-pub struct TableLog(PkTableLog);
+pub struct TableLog(Vec<PkTableAction>);
 
 #[pymethods]
 impl TableLog {
     /// All events as a Python list of TableAction objects.
     fn entries(&self) -> Vec<TableAction> {
-        self.0.entries().into_iter().map(TableAction).collect()
+        self.0.iter().copied().map(TableAction).collect()
     }
 
     /// The most recent event, or None.
     fn last(&self) -> Option<TableAction> {
-        self.0.last().map(TableAction)
+        self.0.last().copied().map(TableAction)
     }
 
     /// The most recent player action (bet/fold/call/raise/check), or None.
     fn last_player_action(&self) -> Option<TableAction> {
-        self.0.last_player_action().map(TableAction)
+        self.0
+            .iter()
+            .rev()
+            .find(|action| action.is_player_action())
+            .copied()
+            .map(TableAction)
     }
 
     /// True if the blinds have been posted this hand.
     fn have_posted_blinds(&self) -> bool {
-        self.0.have_posted_blinds()
+        let has_small_blind = self
+            .0
+            .iter()
+            .any(|action| matches!(action, PkTableAction::ForcedBetSmallBlind(_, _)));
+        let has_big_blind = self
+            .0
+            .iter()
+            .any(|action| matches!(action, PkTableAction::ForcedBetBigBlind(_, _)));
+        has_small_blind && has_big_blind
     }
 
     /// Number of events in the log.
@@ -2829,7 +2841,7 @@ impl Dealer {
     // ---- Seating ----
 
     /// Seat a player at the next available seat. Returns the seat number.
-    fn seat_player(&self, player: &mut Player) -> PyResult<u8> {
+    fn seat_player(&mut self, player: &mut Player) -> PyResult<u8> {
         // Take the player out of the Python wrapper to give ownership to the table
         let p = std::mem::replace(
             &mut player.0,
@@ -2839,7 +2851,7 @@ impl Dealer {
     }
 
     /// Seat a player at a specific seat number (0-indexed).
-    fn seat_player_at(&self, player: &mut Player, seat: u8) -> PyResult<()> {
+    fn seat_player_at(&mut self, player: &mut Player, seat: u8) -> PyResult<()> {
         let p = std::mem::replace(
             &mut player.0,
             PkPlayer::new_with_chips("__taken__".into(), 0),
@@ -2848,7 +2860,7 @@ impl Dealer {
     }
 
     /// Remove the player from the given seat. Returns the removed Player.
-    fn remove_player(&self, seat: u8) -> PyResult<Player> {
+    fn remove_player(&mut self, seat: u8) -> PyResult<Player> {
         self.0.remove_player(seat).map(Player).map_err(dealer_err)
     }
 
@@ -2872,7 +2884,7 @@ impl Dealer {
     // ---- Player actions ----
 
     /// Player at `seat` bets `amount` chips.
-    fn bet(&self, seat: u8, amount: usize) -> PyResult<()> {
+    fn bet(&mut self, seat: u8, amount: usize) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0
             .act(DealerAction::Bet { seat, amount })
@@ -2880,19 +2892,19 @@ impl Dealer {
     }
 
     /// Player at `seat` calls the current bet.
-    fn call(&self, seat: u8) -> PyResult<()> {
+    fn call(&mut self, seat: u8) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0.act(DealerAction::Call { seat }).map_err(dealer_err)
     }
 
     /// Player at `seat` checks.
-    fn check(&self, seat: u8) -> PyResult<()> {
+    fn check(&mut self, seat: u8) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0.act(DealerAction::Check { seat }).map_err(dealer_err)
     }
 
     /// Player at `seat` raises to `amount` chips.
-    fn raise_to(&self, seat: u8, amount: usize) -> PyResult<()> {
+    fn raise_to(&mut self, seat: u8, amount: usize) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0
             .act(DealerAction::Raise { seat, amount })
@@ -2900,19 +2912,19 @@ impl Dealer {
     }
 
     /// Player at `seat` goes all-in.
-    fn all_in(&self, seat: u8) -> PyResult<()> {
+    fn all_in(&mut self, seat: u8) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0.act(DealerAction::AllIn { seat }).map_err(dealer_err)
     }
 
     /// Player at `seat` folds.
-    fn fold(&self, seat: u8) -> PyResult<()> {
+    fn fold(&mut self, seat: u8) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0.act(DealerAction::Fold { seat }).map_err(dealer_err)
     }
 
     /// Mark player at `seat` as ready to play.
-    fn ready(&self, seat: u8) -> PyResult<()> {
+    fn ready(&mut self, seat: u8) -> PyResult<()> {
         use pkcore::casino::dealer::DealerAction;
         self.0.act(DealerAction::Ready { seat }).map_err(dealer_err)
     }
@@ -2946,7 +2958,7 @@ impl Dealer {
 
     /// A copy of the full event log.
     fn event_log(&self) -> TableLog {
-        TableLog(self.0.event_log().clone())
+        TableLog(self.0.event_log().to_vec())
     }
 
     fn __repr__(&self) -> String {
