@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project tracks [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
+## [Unreleased]
+
+### Changed
+
+- Relicensed from `GPL-3.0-or-later` to `MIT OR Apache-2.0`, matching `pkcore`.
+  Replaced `LICENSE` with `LICENSE-MIT` and `LICENSE-APACHE`; updated
+  `Cargo.toml`, `pyproject.toml` classifiers, and the README badges.
+
 ## [0.7.0] - 2026-08-22
 
 ### Changed
