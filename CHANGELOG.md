@@ -10,6 +10,10 @@ The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
 ### Changed
 
+- Bumped `pkcore` dependency from `0.8.0` to `0.9.0`. No code changes were
+  needed; the crate compiles cleanly against the new version.
+- Bumped `pkpy` crate version to `0.9.0` to stay in lockstep with `pkcore`.
+
 - Relicensed from `GPL-3.0-or-later` to `MIT OR Apache-2.0`, matching `pkcore`.
   Replaced `LICENSE` with `LICENSE-MIT` and `LICENSE-APACHE`; updated
   `Cargo.toml`, `pyproject.toml` classifiers, and the README badges.
