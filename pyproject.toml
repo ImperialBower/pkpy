@@ -7,7 +7,7 @@ name = "pkpython"
 dynamic = ["version"]
 description = "Python bindings for pkcore, a high-performance poker analysis library"
 readme = "README.md"
-license = { text = "GPL-3.0-or-later" }
+license = { text = "MIT OR Apache-2.0" }
 requires-python = ">=3.8"
 authors = [
     { name = "folkengine", email = "gaoler@electronicpanopticon.com"},
@@ -17,7 +17,8 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Games/Entertainment",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 
 [project.urls]
