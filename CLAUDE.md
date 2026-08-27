@@ -1,7 +1,7 @@
-# pkpy project instructions
+# pkcore.py project instructions
 
 ## Version rule
 
-`pkpy`'s version in `Cargo.toml` must always match the `pkcore` dependency
-version. When `pkcore` is bumped, bump `pkpy`'s own `version` field to the
+`pkcore.py`'s version in `Cargo.toml` must always match the `pkcore` dependency
+version. When `pkcore` is bumped, bump `pkcore.py`'s own `version` field to the
 same value in the same change.

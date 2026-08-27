@@ -15,7 +15,7 @@ import argparse
 import sys
 import time
 
-from pkpy import Board, Combos, Two, Versus
+from pkcore import Board, Combos, Two, Versus
 
 
 def main():

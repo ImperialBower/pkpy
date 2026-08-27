@@ -1,8 +1,8 @@
-"""Tests for pkpy poker session bindings."""
+"""Tests for pkcore.py poker session bindings."""
 
 import pytest
 
-from pkpy import PlayerAction
+from pkcore import PlayerAction
 
 
 class TestPlayerAction:
@@ -56,18 +56,18 @@ class TestSessionStep:
     """
 
     def test_import(self):
-        from pkpy import SessionStep
+        from pkcore import SessionStep
         # Class must exist; instances are created by PokerSession.next_step.
         assert SessionStep is not None
 
 
 class TestPokerSession:
     def _heads_up(self, sb=50, bb=100, stacks=(1000, 1000)):
-        from pkpy import ForcedBets, PokerSession
+        from pkcore import ForcedBets, PokerSession
         return PokerSession.heads_up(ForcedBets(sb, bb), stacks=stacks)
 
     def test_construct_from_table(self):
-        from pkpy import ForcedBets, PokerSession, TableNoCell
+        from pkcore import ForcedBets, PokerSession, TableNoCell
         table = TableNoCell.heads_up(ForcedBets(50, 100))
         session = PokerSession(table)
         assert session.hand_number == 0
@@ -113,7 +113,7 @@ class TestPokerSession:
         assert session.count_funded() == 2
 
     def test_apply_action_fold_ends_hand(self):
-        from pkpy import PlayerAction
+        from pkcore import PlayerAction
         session = self._heads_up()
         session.start_hand()
         actor = session.next_actor()
@@ -127,7 +127,7 @@ class TestPokerSession:
     # Direct translations of pkcore unit tests at casino/session.rs:970-1010.
 
     def test_set_blinds_between_hands_applies_immediately(self):
-        from pkpy import ForcedBets
+        from pkcore import ForcedBets
         session = self._heads_up()
         session.set_blinds(ForcedBets(100, 200))
         # Before any hand starts, the snapshot reflects the *new* blinds
@@ -140,7 +140,7 @@ class TestPokerSession:
         assert session.forced_at_hand_start().big_blind == 200
 
     def test_set_blinds_during_hand_defers_to_next_hand(self):
-        from pkpy import ForcedBets, PlayerAction
+        from pkcore import ForcedBets, PlayerAction
         session = self._heads_up()
         session.start_hand()
         # Mid-hand: bump blinds.
@@ -150,7 +150,7 @@ class TestPokerSession:
         assert session.forced_at_hand_start().big_blind == 100
 
     def test_deferred_blinds_take_effect_on_next_start_hand(self):
-        from pkpy import ForcedBets, PlayerAction
+        from pkcore import ForcedBets, PlayerAction
         session = self._heads_up()
         session.start_hand()
         session.set_blinds(ForcedBets(100, 200))
@@ -164,7 +164,7 @@ class TestPokerSession:
         assert session.forced_at_hand_start().big_blind == 200
 
     def test_forced_at_hand_start_stable_during_hand(self):
-        from pkpy import ForcedBets
+        from pkcore import ForcedBets
         session = self._heads_up()
         session.start_hand()
         snap1 = session.forced_at_hand_start()

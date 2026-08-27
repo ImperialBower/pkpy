@@ -8,6 +8,25 @@ The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
 ## [Unreleased]
 
+### Breaking (package rename)
+
+- Renamed the project from `pkpy` to `pkcore.py`. The PyPI distribution is now
+  `pkcore.py` (was `pkpython`) and the Python import is `pkcore` (was `pkpy`):
+
+  ```bash
+  pip install pkcore.py
+  ```
+
+  ```python
+  from pkcore import Card   # was: from pkpy import Card
+  ```
+
+  The Rust crate is `pkcore-py` (Cargo names cannot contain a dot; the crate is
+  not published to crates.io). The compiled extension module is
+  `pkcore._pkcore` (was `pkpy._pkpy`). The repository moved to
+  `ImperialBower/pkcore.py`; the old GitHub URL redirects. `pkpython` on PyPI
+  receives no further releases.
+
 ### Changed
 
 - Bumped `pkcore` dependency from `0.8.0` to `0.9.0`. No code changes were

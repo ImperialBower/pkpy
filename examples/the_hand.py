@@ -12,7 +12,7 @@ Run with:
     python examples/the_hand.py
 """
 
-from pkpy import Board, Game, HoleCards, Outs
+from pkcore import Board, Game, HoleCards, Outs
 
 SEP = "=" * 60
 THIN = "-" * 60

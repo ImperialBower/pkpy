@@ -1,15 +1,30 @@
-[![CI](https://github.com/ImperialBower/pkpy/actions/workflows/ci.yml/badge.svg)](https://github.com/ImperialBower/pkpy/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/pkpython.svg)](https://pypi.org/project/pkpython/)
+[![CI](https://github.com/ImperialBower/pkcore.py/actions/workflows/ci.yml/badge.svg)](https://github.com/ImperialBower/pkcore.py/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pkcore.py.svg)](https://pypi.org/project/pkcore.py/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE-MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE-APACHE)
 
-# pkpy
+# pkcore.py
 
 Python bindings for [pkcore](https://github.com/folkengine/pkcore), a high-performance poker analysis library written in Rust.
 
 ## What This Project Does
 
-pkpy lets Python developers use pkcore's poker engine — card parsing, hand evaluation, Texas Hold'em game simulation, outs calculation, and more — without writing any Rust. The Rust library runs natively and is called directly from Python with no subprocess overhead or serialization round-trips.
+pkcore.py lets Python developers use pkcore's poker engine — card parsing, hand evaluation, Texas Hold'em game simulation, outs calculation, and more — without writing any Rust. The Rust library runs natively and is called directly from Python with no subprocess overhead or serialization round-trips.
+
+## Install
+
+```bash
+pip install pkcore.py
+```
+
+```python
+from pkcore import Card
+print(Card.parse("As"))
+```
+
+The distribution name is `pkcore.py`; the import name is `pkcore`. This follows the same convention as `discord.py` → `import discord`.
+
+> **Renamed from `pkpy`.** Releases up to 0.9.0 were published on PyPI as `pkpython` with `import pkpy`. That package receives no further updates — switch to `pkcore.py`.
 
 ---
 
@@ -57,19 +72,19 @@ A lower `HandRankValue` is a stronger hand (1 = royal flush, 7462 = worst high c
 ## Project Structure
 
 ```
-pkpy/
+pkcore.py/
 ├── Cargo.toml              # Rust crate manifest
 ├── pyproject.toml          # Python build config (maturin)
 ├── src/
 │   └── lib.rs              # All PyO3 bindings
 ├── python/
-│   └── pkpy/
+│   └── pkcore/
 │       └── __init__.py     # Python package — re-exports everything from the extension
 └── tests/
-    └── test_pkpy.py        # pytest test suite
+    └── test_pkcore.py       # pytest test suite
 ```
 
-The `python/pkpy/` directory is the Python package. The compiled Rust extension (`_pkpy.so`) is dropped into it by maturin. `__init__.py` re-exports everything so users write `from pkpy import Card` rather than `from pkpy._pkpy import Card`.
+The `python/pkcore/` directory is the Python package. The compiled Rust extension (`_pkcore.so`) is dropped into it by maturin. `__init__.py` re-exports everything so users write `from pkcore import Card` rather than `from pkcore._pkcore import Card`.
 
 ---
 
@@ -80,7 +95,7 @@ The `python/pkpy/` directory is the Python package. The compiled Rust extension 
 A single playing card. Internally a `u32` in Cactus Kev format.
 
 ```python
-from pkpy import Card, Rank, Suit
+from pkcore import Card, Rank, Suit
 
 # Parse from string — accepts "As", "A♠", "a♠", "AH", etc.
 ace_spades = Card.parse("As")
@@ -107,7 +122,7 @@ card == Card.parse("Qd") # -> True
 A standard 52-card deck. All methods are static — `Deck` is a namespace for deck-level operations.
 
 ```python
-from pkpy import Deck
+from pkcore import Deck
 
 deck = Deck.poker_cards()           # -> Cards, ordered A♠ down to 2♣
 shuffled = Deck.poker_cards_shuffled()  # -> Cards, randomly shuffled
@@ -121,7 +136,7 @@ Deck.len()                          # -> 52
 An ordered, unique collection of cards backed by an `IndexSet` (ordered hash set). Duplicate inserts are silently ignored.
 
 ```python
-from pkpy import Cards
+from pkcore import Cards
 
 hand = Cards.parse("As Ks Qh")
 deck = Cards.deck()           # full 52-card deck in order
@@ -168,7 +183,7 @@ hand.deck_primed()                # -> Cards (this collection first, then rest o
 A collection of two-card hands for one or more players. Cards are parsed in pairs: the first two belong to player 1, the next two to player 2, and so on.
 
 ```python
-from pkpy import HoleCards
+from pkcore import HoleCards
 
 # Two players
 hc = HoleCards.parse("As Kh 8d Kc")
@@ -188,7 +203,7 @@ len(hc)  # -> 2
 The community cards (flop, turn, river).
 
 ```python
-from pkpy import Board
+from pkcore import Board
 
 board = Board.parse("Ac 8h 7h 9s")      # flop + turn
 board = Board.parse("Ac 8h 7h 9s 5s")  # full board
@@ -202,7 +217,7 @@ str(board)          # -> "FLOP: A♣ 8♥ 7♥, TURN: 9♠, RIVER: _"
 Combines hole cards and a board. The main entry point for analysis.
 
 ```python
-from pkpy import Game, HoleCards, Board, Outs
+from pkcore import Game, HoleCards, Board, Outs
 
 hc    = HoleCards.parse("As Kh 8d Kc")
 board = Board.parse("Ac 8h 7h 9s")
@@ -234,7 +249,7 @@ len(case_evals)  # -> number of possible river cards evaluated
 Cards that, if dealt on the river, cause a specific player to win. Built from `CaseEvals`.
 
 ```python
-from pkpy import Outs
+from pkcore import Outs
 
 outs = Outs.from_case_evals(case_evals)
 
@@ -255,7 +270,7 @@ Players are 1-indexed.
 `HandRankClass` is the detailed category (e.g., `RoyalFlush`, `FourAces`, `AcesOverKings`).
 
 ```python
-from pkpy import HandRankClass
+from pkcore import HandRankClass
 
 HandRankClass.ROYAL_FLUSH.is_straight_flush()  # -> True
 str(HandRankClass.ROYAL_FLUSH)                 # -> "RoyalFlush"
@@ -266,7 +281,7 @@ str(HandRankClass.ROYAL_FLUSH)                 # -> "RoyalFlush"
 ### Constants
 
 ```python
-from pkpy import (
+from pkcore import (
     unique_5_card_hands,    # 2,598,960
     distinct_5_card_hands,  # 7,462
     unique_2_card_hands,    # 1,326
@@ -283,7 +298,7 @@ from pkpy import (
 An abstract hand combination defined by rank(s) and a suit qualifier.
 
 ```python
-from pkpy import Combo
+from pkcore import Combo
 
 c = Combo.parse("AKs")
 c.is_suited()           # -> True
@@ -304,7 +319,7 @@ Combo.parse("AKo").total_pairs()# -> 12 (twelve offsuit AK combos)
 A range of abstract hand combinations, parsed from standard poker range notation.
 
 ```python
-from pkpy import Combos
+from pkcore import Combos
 
 r = Combos.parse("QQ+, AK")
 len(r)          # -> 5  (QQ, KK, AA, AKs, AKo as abstract combos)
@@ -328,7 +343,7 @@ tight = Combos.parse(Combos.PERCENT_2_5)
 A concrete two-card hand — the unit produced by combo explosion.
 
 ```python
-from pkpy import Two
+from pkcore import Two
 
 t = Two.parse("As Kh")
 t.first()               # -> Card (A♠)
@@ -344,7 +359,7 @@ t.contains_suit(Suit.SPADES) # -> True
 The collection returned by `Combos.explode()`. Supports filtering.
 
 ```python
-from pkpy import Combos
+from pkcore import Combos
 
 twos = Combos.parse("QQ+, AK").explode()
 
@@ -364,7 +379,7 @@ twos.contains(Two.parse("As Kh"))  # -> bool
 The suit qualifier for a combo: `SUITED`, `OFFSUIT`, or `ALL`.
 
 ```python
-from pkpy import Combo, Qualifier
+from pkcore import Combo, Qualifier
 
 Combo.parse("AKs").qualifier == Qualifier.SUITED   # -> True
 Combo.parse("AKo").qualifier == Qualifier.OFFSUIT  # -> True
@@ -374,7 +389,7 @@ Combo.parse("AK").qualifier  == Qualifier.ALL      # -> True
 ### GTO Example
 
 ```python
-from pkpy import Combos, Rank
+from pkcore import Combos, Rank
 
 # Villain's opening range
 villain_range = Combos.parse("66+,AJs+,KQs,AJo+,KQo")
@@ -401,14 +416,14 @@ print(f"Offsuit: {len(twos.filter_is_not_suited())}")
 
 ## Binary Card Maps
 
-pkpy exposes pkcore's binary card map types, which provide compact, high-performance hand evaluation storage. These are the building blocks for precomputed lookup tables.
+pkcore.py exposes pkcore's binary card map types, which provide compact, high-performance hand evaluation storage. These are the building blocks for precomputed lookup tables.
 
 ### `Bard`
 
 A 64-bit bitset where each of the 52 cards occupies one bit. Set operations (union, intersection, membership) are single CPU instructions.
 
 ```python
-from pkpy import Bard, Card, Cards
+from pkcore import Bard, Card, Cards
 
 # Construct
 b = Bard.from_card(Card.parse("As"))        # single card
@@ -433,7 +448,7 @@ A binary card map entry for a 5- or 7-card hand. Stores the hand's `Bard`, the b
 `rank` follows the Cactus Kev convention: **lower is stronger** (1 = royal flush, 7462 = worst high card).
 
 ```python
-from pkpy import Cards, SevenFiveBCM
+from pkcore import Cards, SevenFiveBCM
 
 # Build from a 5-card hand
 bcm = SevenFiveBCM.from_cards(Cards.parse("As Ks Qs Js Ts"))
@@ -457,7 +472,7 @@ SevenFiveBCM.generate_csv("bcm.csv")   # enumerate all 5- and 7-card combos
 Like `SevenFiveBCM` but stores card hands as human-readable display strings instead of `Bard` bitsets. Useful for inspectable CSV output.
 
 ```python
-from pkpy import Cards, IndexCardMap
+from pkcore import Cards, IndexCardMap
 
 icm = IndexCardMap.from_cards(Cards.parse("As Ks Qs Js Ts"))
 icm.rank     # -> 1
@@ -474,7 +489,7 @@ IndexCardMap.generate_csv("icm.csv")
 ### BCM example
 
 ```python
-from pkpy import Cards, SevenFiveBCM, IndexCardMap
+from pkcore import Cards, SevenFiveBCM, IndexCardMap
 
 hands = [
     Cards.parse("As Ks Qs Js Ts"),      # royal flush
@@ -492,7 +507,7 @@ for hand in hands:
 
 ## Pluribus Log Parsing
 
-pkpy can parse hand histories from the [Pluribus](https://en.wikipedia.org/wiki/Pluribus_(poker_bot)) AI poker logs. Each line in a log file is a `STATE` record encoding one hand.
+pkcore.py can parse hand histories from the [Pluribus](https://en.wikipedia.org/wiki/Pluribus_(poker_bot)) AI poker logs. Each line in a log file is a `STATE` record encoding one hand.
 
 ### Log format
 
@@ -510,7 +525,7 @@ STATE:{index}:{rounds}:{cards}:{winnings}:{players}
 A single action: fold, call, or raise.
 
 ```python
-from pkpy import Pluribus
+from pkcore import Pluribus
 
 hand = Pluribus.parse("STATE:0:ffr225fff:3c9s|6d5s|9dTs|2sQs|AdKd|7cTc:-50|-100|0|0|150|0:MrWhite|Gogo|Budd|Eddie|Bill|Pluribus")
 
@@ -527,7 +542,7 @@ for event in hand.actions():
 A parsed hand record.
 
 ```python
-from pkpy import Pluribus
+from pkcore import Pluribus
 
 # Parse a single log line
 hand = Pluribus.parse("STATE:27:r200ffcfc/cr850cf/cr1825r3775c/r10000c:Qc4h|Tc9c|8sAs|Qh7c|JcQd|5h5d/3h7s5c/Qs/6c:-50|-200|-10000|0|0|10250:Eddie|Bill|Pluribus|MrWhite|Gogo|Budd")
@@ -552,7 +567,7 @@ print(f"Loaded {len(hands)} hands")
 ### Pluribus example
 
 ```python
-from pkpy import Pluribus
+from pkcore import Pluribus
 
 LOG_LINE = "STATE:27:r200ffcfc/cr850cf/cr1825r3775c/r10000c:Qc4h|Tc9c|8sAs|Qh7c|JcQd|5h5d/3h7s5c/Qs/6c:-50|-200|-10000|0|0|10250:Eddie|Bill|Pluribus|MrWhite|Gogo|Budd"
 
@@ -575,14 +590,14 @@ print(hand.display_results())
 
 ## Casino Table Simulation
 
-pkpy exposes pkcore's casino table simulation layer, which models a heads-up or multi-player poker table with blinds, betting, and chip accounting. The key types are `Dealer` (the engine), `Player`, `ForcedBets`, and the log/result types.
+pkcore.py exposes pkcore's casino table simulation layer, which models a heads-up or multi-player poker table with blinds, betting, and chip accounting. The key types are `Dealer` (the engine), `Player`, `ForcedBets`, and the log/result types.
 
 ### `ForcedBets`
 
 Configures the blinds and optional ante for a hand.
 
 ```python
-from pkpy import ForcedBets
+from pkcore import ForcedBets
 
 bets = ForcedBets(small_blind=50, big_blind=100)
 bets = ForcedBets(small_blind=50, big_blind=100, ante=25)
@@ -593,7 +608,7 @@ bets = ForcedBets(small_blind=50, big_blind=100, ante=25)
 A chip count wrapper.
 
 ```python
-from pkpy import Stack
+from pkcore import Stack
 
 s = Stack(1000)
 s.count()     # -> 1000
@@ -605,7 +620,7 @@ s.is_empty()  # -> False
 A player seated at the table with a name and chip stack.
 
 ```python
-from pkpy import Player
+from pkcore import Player
 
 p = Player("Alice", 1000)
 p.handle          # -> "Alice"
@@ -637,7 +652,7 @@ state.is_sitting_out()# -> bool
 A compact bitset of occupied seat numbers (seats 0–15).
 
 ```python
-from pkpy import Seatbit
+from pkcore import Seatbit
 
 sb = dealer.ready()
 sb.contains(0)   # -> bool  (is seat 0 occupied?)
@@ -706,7 +721,7 @@ log.have_posted_blinds()   # -> bool
 The table engine. Manages seating, hand flow, betting, and chip accounting.
 
 ```python
-from pkpy import Dealer, ForcedBets, Player
+from pkcore import Dealer, ForcedBets, Player
 
 dealer = Dealer(ForcedBets(50, 100))
 
@@ -738,7 +753,7 @@ dealer.event_log()       # -> TableLog
 ### Casino example
 
 ```python
-from pkpy import Dealer, ForcedBets, Player, Winnings
+from pkcore import Dealer, ForcedBets, Player, Winnings
 
 # Set up a heads-up table: 50/100 blinds
 dealer = Dealer(ForcedBets(50, 100))
@@ -782,7 +797,7 @@ for action in dealer.event_log().entries():
 ## Complete Example
 
 ```python
-from pkpy import HoleCards, Board, Game, Outs
+from pkcore import HoleCards, Board, Game, Outs
 
 # Recreate the famous Negreanu vs Hansen hand:
 # Daniel holds 6♠ 6♥, Gus holds 5♦ 5♣
@@ -808,8 +823,8 @@ print(f"Leading player: {outs.longest_player()}")
 
 ```bash
 # Clone and enter the project
-git clone <repo-url> pkpy
-cd pkpy
+git clone https://github.com/ImperialBower/pkcore.py.git
+cd pkcore.py
 
 # Create a virtual environment
 python3 -m venv .venv
@@ -831,8 +846,8 @@ After changing `src/lib.rs`, re-run `python3 -m maturin develop` to recompile. O
 
 ```bash
 python3 -m maturin build --release
-# Wheel lands in target/wheels/pkpy-*.whl
-pip install target/wheels/pkpy-*.whl
+# Wheel lands in target/wheels/pkcore_py-*.whl
+pip install target/wheels/pkcore_py-*.whl
 ```
 
 For distribution, maturin can also publish directly to PyPI:

@@ -96,7 +96,7 @@ import argparse
 import sys
 import time
 
-from pkpy import Board, Game, HoleCards
+from pkcore import Board, Game, HoleCards
 
 
 def main():

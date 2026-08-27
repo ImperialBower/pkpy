@@ -1,11 +1,11 @@
 """
-pkpy — Python bindings for the pkcore Rust poker analysis library.
+pkcore.py — Python bindings for the pkcore Rust poker analysis library.
 
 Provides card types, hand evaluation, and Texas Hold'em game simulation.
 
 Basic usage::
 
-    from pkpy import Card, Cards, HoleCards, Board, Game, Outs
+    from pkcore import Card, Cards, HoleCards, Board, Game, Outs
 
     # Parse individual cards
     ace = Card.parse("As")
@@ -20,7 +20,7 @@ Basic usage::
     print(f"Player 2 outs: {outs.len_for_player(2)}")
 """
 
-from pkpy._pkpy import (
+from pkcore._pkcore import (
     KuhnCard,
     KuhnAction,
     KuhnHistory,

@@ -1,11 +1,11 @@
 """
-demo.py — pkpy feature showcase
+demo.py — pkcore.py feature showcase
 
 Run with:
     python demo.py
 """
 
-from pkpy import (
+from pkcore import (
     Board,
     Card,
     Cards,

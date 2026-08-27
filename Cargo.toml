@@ -1,12 +1,12 @@
 [package]
-name = "pkpy"
+name = "pkcore-py"
 version = "0.9.0"
 edition = "2021"
 description = "Python bindings for pkcore, a high-performance poker analysis library"
 license = "MIT OR Apache-2.0"
 
 [lib]
-name = "pkpy"
+name = "_pkcore"
 crate-type = ["cdylib"]
 
 [dependencies]

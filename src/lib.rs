@@ -1074,7 +1074,7 @@ impl Game {
 /// best hand, win percentage, and the board state.
 ///
 /// Examples:
-///     >>> from pkpy import HoleCards, Board, Game
+///     >>> from pkcore import HoleCards, Board, Game
 ///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
 ///     >>> board = Board.parse("9c 6d 5h")
 ///     >>> game = Game(hc, board)
@@ -1110,7 +1110,7 @@ impl FlopEval {
 /// best hand, win percentage, and outs going into the river.
 ///
 /// Examples:
-///     >>> from pkpy import HoleCards, Board, Game
+///     >>> from pkcore import HoleCards, Board, Game
 ///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
 ///     >>> board = Board.parse("9c 6d 5h 5s")
 ///     >>> game = Game(hc, board)
@@ -1189,7 +1189,7 @@ impl Qualifier {
 /// qualifier. Use `Combos.explode()` to expand a range into all concrete `Two` hands.
 ///
 /// Examples:
-///     >>> from pkpy import Combo
+///     >>> from pkcore import Combo
 ///     >>> c = Combo.parse("AKs")
 ///     >>> c.is_suited()
 ///     True
@@ -1312,7 +1312,7 @@ impl Combo {
 /// card membership.
 ///
 /// Examples:
-///     >>> from pkpy import Two
+///     >>> from pkcore import Two
 ///     >>> t = Two.parse("As Kh")
 ///     >>> t.is_suited()
 ///     False
@@ -1389,7 +1389,7 @@ impl Two {
 /// suit, pairing, or suitedness.
 ///
 /// Examples:
-///     >>> from pkpy import Combos
+///     >>> from pkcore import Combos
 ///     >>> twos = Combos.parse("QQ+, AK").explode()
 ///     >>> len(twos)
 ///     30
@@ -1475,7 +1475,7 @@ impl Twos {
 ///     - `Combos.PERCENT_33`   — top ~33%
 ///
 /// Examples:
-///     >>> from pkpy import Combos
+///     >>> from pkcore import Combos
 ///     >>> r = Combos.parse("QQ+, AK")
 ///     >>> len(r)
 ///     5
@@ -1570,7 +1570,7 @@ impl Combos {
 /// Aggregate win, loss, and draw counts for a heads-up matchup.
 ///
 /// Examples:
-///     >>> from pkpy import Versus, Two, Combos
+///     >>> from pkcore import Versus, Two, Combos
 ///     >>> solver = Versus(Two.parse("K♠ K♥"), Combos.parse("66+,AJs+,KQs,AJo+,KQo"))
 ///     >>> hups = solver.hups_at_deal()
 ///     >>> results = Versus.combined_odds_at_deal(hups)
@@ -1701,7 +1701,7 @@ impl ComboPairs {
 /// postflop equity across all possible villain hands.
 ///
 /// Examples:
-///     >>> from pkpy import Versus, Two, Combos
+///     >>> from pkcore import Versus, Two, Combos
 ///     >>> hero = Two.parse("K♠ K♥")
 ///     >>> villain = Combos.parse("66+,AJs+,KQs,AJo+,KQo")
 ///     >>> solver = Versus(hero, villain)
@@ -3005,7 +3005,7 @@ fn distinct_2_card_hands() -> usize {
 /// Pot odds and breakeven equity for a single decision point.
 ///
 /// Examples:
-///     >>> from pkpy import PotOdds
+///     >>> from pkcore import PotOdds
 ///     >>> po = PotOdds(200, 100)
 ///     >>> po.breakeven()
 ///     0.3333...
@@ -3070,7 +3070,7 @@ impl PotOdds {
 /// Expected value of a poker call, derived from outcome counts and pot geometry.
 ///
 /// Examples:
-///     >>> from pkpy import Ev, WinLoseDraw, PotOdds
+///     >>> from pkcore import Ev, WinLoseDraw, PotOdds
 ///     >>> odds = WinLoseDraw(7, 3, 0)
 ///     >>> po = PotOdds(200, 100)
 ///     >>> ev = Ev(odds, po)
@@ -3130,7 +3130,7 @@ impl Ev {
 /// A simple fraction expressed as number / total, with a percentage calculation.
 ///
 /// Examples:
-///     >>> from pkpy import Percentage
+///     >>> from pkcore import Percentage
 ///     >>> p = Percentage(7, 10)
 ///     >>> p.calculate()
 ///     70.0
@@ -3176,7 +3176,7 @@ impl Percentage {
 /// An ordered collection of ranks, parseable from a whitespace-separated string.
 ///
 /// Examples:
-///     >>> from pkpy import Ranks
+///     >>> from pkcore import Ranks
 ///     >>> r = Ranks.parse("A K Q")
 ///     >>> r.count()
 ///     3
@@ -3226,7 +3226,7 @@ impl Ranks {
 /// Requires at least the flop to be dealt.
 ///
 /// Examples:
-///     >>> from pkpy import RangeEquity, Combos, Board
+///     >>> from pkcore import RangeEquity, Combos, Board
 ///     >>> hero = Combos.parse("QQ+")
 ///     >>> villain = Combos.parse("AKs,AKo")
 ///     >>> board = Board.parse("As Kh 2d 7c 3c")
@@ -3272,7 +3272,7 @@ impl RangeEquity {
 /// possible 5-card board. Use for preflop equity analysis.
 ///
 /// Examples:
-///     >>> from pkpy import HoleCards, DealEval
+///     >>> from pkcore import HoleCards, DealEval
 ///     >>> hc = HoleCards.parse("As Ah 2d 2c")
 ///     >>> deal = DealEval(hc)
 ///     >>> print(deal)
@@ -3314,7 +3314,7 @@ impl DealEval {
 /// The board is fully dealt, so there is a single deterministic outcome.
 ///
 /// Examples:
-///     >>> from pkpy import HoleCards, Board, Game, RiverEval
+///     >>> from pkcore import HoleCards, Board, Game, RiverEval
 ///     >>> hc = HoleCards.parse("6s 6h 5d 5c")
 ///     >>> board = Board.parse("9c 6d 5h 5s 8s")
 ///     >>> game = Game(hc, board)
@@ -3355,7 +3355,7 @@ impl RiverEval {
 /// A GTO bet size expressed as a fraction of the pot (numerator/denominator).
 ///
 /// Examples:
-///     >>> from pkpy import BetSize
+///     >>> from pkcore import BetSize
 ///     >>> b = BetSize.half_pot()
 ///     >>> b.as_fraction()
 ///     (1, 2)
@@ -3433,7 +3433,7 @@ impl BetSize {
 /// Bet sizes available on each street (flop, turn, river).
 ///
 /// Examples:
-///     >>> from pkpy import BetSizings, BetSize
+///     >>> from pkcore import BetSizings, BetSize
 ///     >>> bs = BetSizings.uniform([BetSize.half_pot(), BetSize.pot()])
 #[pyclass(skip_from_py_object, name = "BetSizings")]
 #[allow(dead_code)]
@@ -3471,7 +3471,7 @@ impl BetSizings {
 /// Configuration for the GTO CFR solver.
 ///
 /// Examples:
-///     >>> from pkpy import SolverConfig, Combos, Board
+///     >>> from pkcore import SolverConfig, Combos, Board
 ///     >>> hero = Combos.parse("KK+")
 ///     >>> villain = Combos.parse("AKs,AKo")
 ///     >>> board = Board.parse("2h 3d 4c 5s 6h")
@@ -3582,7 +3582,7 @@ impl SolverResult {
 /// Run `iterate()` one or more times and then `solve()` to get the equilibrium.
 ///
 /// Examples:
-///     >>> from pkpy import Solver, SolverConfig, Combos, Board
+///     >>> from pkcore import Solver, SolverConfig, Combos, Board
 ///     >>> config = SolverConfig(Combos.parse("KK+"), Combos.parse("AKs"), Board.parse("2h 3d 4c 5s 6h"), 1000, 200)
 ///     >>> solver = Solver(config)
 ///     >>> result = solver.solve()
@@ -3998,7 +3998,7 @@ impl KuhnCfr {
 // ============================================================
 
 #[pymodule]
-fn _pkpy(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _pkcore(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Rank>()?;
     m.add_class::<Suit>()?;
     m.add_class::<Card>()?;

@@ -1,7 +1,7 @@
-"""Tests for the pkpy Python bindings."""
+"""Tests for the pkcore.py Python bindings."""
 
 import pytest
-from pkpy import (
+from pkcore import (
     Bard,
     Board,
     Card,
