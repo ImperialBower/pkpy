@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project tracks [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
-## [Unreleased]
+## [0.11.0] - 2026-08-30
 
 ### Breaking (package rename)
 
@@ -29,9 +29,29 @@ The crate version is kept in lockstep with the underlying `pkcore` dependency.
 
 ### Changed
 
-- Bumped `pkcore` dependency from `0.8.0` to `0.9.0`. No code changes were
-  needed; the crate compiles cleanly against the new version.
-- Bumped `pkpy` crate version to `0.9.0` to stay in lockstep with `pkcore`.
+- Bumped the `pkcore` dependency from `0.8.0` to `0.11.0`, skipping the `0.9`
+  and `0.10` lines. No code changes were needed; the crate compiles cleanly and
+  all 228 tests pass against the new version.
+- Bumped the `pkcore-py` crate version to `0.11.0` to stay in lockstep with
+  `pkcore`.
+
+  Three upstream changes were checked against these bindings and none of them
+  reach the Python API:
+
+  - `pkcore` 0.11.0 made `store` and `terminal` non-default features.
+    `Cargo.toml` here already requested `features = ["store"]`, so the storage
+    types (`IndexCardMap`, `SevenFiveBCM`, `HUPResult`) are unaffected.
+  - `pkcore` 0.11.0 lowered the `EquityOptions::max_samples` default from
+    100,000 to 25,000 — a silent precision change. These bindings never call
+    `analysis::equity`, so no exposed method changes its answer.
+  - `pkcore` 0.11.0 deprecated `TableManager` and `TableEvent`. Neither was
+    ever wrapped here.
+
+  Upstream additions not yet exposed in Python: `Table::snapshot` /
+  `Table::restore` and `PokerSession::snapshot` / `PokerSession::restore`
+  (postcard byte-identical save/resume), the finer `Table::showdown` and
+  `Table::audit_chip_total` tier under `end_hand`, and the Pluribus
+  `Unumable` export half added in `pkcore` 0.10.0.
 
 - Relicensed from `GPL-3.0-or-later` to `MIT OR Apache-2.0`, matching `pkcore`.
   Replaced `LICENSE` with `LICENSE-MIT` and `LICENSE-APACHE`; updated
